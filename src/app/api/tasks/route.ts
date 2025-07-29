@@ -9,7 +9,19 @@ export async function GET() {
     const db = await getDb();
     // Fetch tasks ordered by date and start time (chronological order)
     const tasks = await db.all('SELECT * FROM tasks ORDER BY task_date ASC, start_time ASC, created_at ASC');
-    return new Response(JSON.stringify(tasks), {
+    
+    // Fetch logs for each task
+    const tasksWithLogs = await Promise.all(
+      tasks.map(async (task) => {
+        const logs = await db.all(
+          'SELECT * FROM task_logs WHERE task_id = ? ORDER BY created_at DESC',
+          task.id
+        );
+        return { ...task, logs };
+      })
+    );
+    
+    return new Response(JSON.stringify(tasksWithLogs), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     });

@@ -15,7 +15,7 @@ export async function deleteTaskFromAI({ id }: { id: string }) {
   return res.json();
 }
 
-export async function editTaskFromAI({ id, title, description, status, task_date, start_time, end_time }: {
+export async function editTaskFromAI({ id, title, description, status, task_date, start_time, end_time, add_log }: {
   id: string;
   title?: string;
   description?: string;
@@ -23,6 +23,7 @@ export async function editTaskFromAI({ id, title, description, status, task_date
   task_date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
+  add_log?: string | null;
 }) {
   let url = `/api/tasks/${id}`;
   if (typeof window === 'undefined') {
@@ -39,5 +40,21 @@ export async function editTaskFromAI({ id, title, description, status, task_date
   if (!res.ok) {
     throw new Error(`Failed to edit task: ${res.statusText}`);
   }
-  return res.json();
+  
+  const result = await res.json();
+  
+  // Add log entry if provided
+  if (add_log && add_log.trim()) {
+    const logUrl = typeof window === 'undefined'
+      ? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000') + `/api/tasks/${id}/logs`
+      : `/api/tasks/${id}/logs`;
+      
+    await fetch(logUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: add_log.trim() }),
+    });
+  }
+  
+  return result;
 }

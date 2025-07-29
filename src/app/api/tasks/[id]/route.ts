@@ -8,7 +8,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!task) {
     return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
   }
-  return new Response(JSON.stringify(task), {
+  
+  // Get logs for this task
+  const logs = await db.all(
+    'SELECT * FROM task_logs WHERE task_id = ? ORDER BY created_at DESC',
+    id
+  );
+  
+  // Include logs in the task response
+  const taskWithLogs = { ...task, logs };
+  
+  return new Response(JSON.stringify(taskWithLogs), {
     headers: { 'Content-Type': 'application/json' },
     status: 200,
   });

@@ -1,20 +1,10 @@
 "use client";
 import React, { useState, useEffect } from "react";
-
+import { Task, TaskLog } from "./types/task";
+import TaskLogs from "./components/TaskLogs";
 
 const SCHOOL_BUS_YELLOW = "#FFD800";
 const JET_BLACK = "#121212";
-
-type Task = {
-  id: number;
-  title: string;
-  description?: string;
-  status: string;
-  task_date?: string | null;
-  start_time?: string | null;
-  end_time?: string | null;
-  done?: boolean;
-};
 
 export default function TaskManager() {
 
@@ -28,6 +18,7 @@ export default function TaskManager() {
   const [startTime, setStartTime] = useState<string>("");
   const [endTime, setEndTime] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
 
   // Fetch tasks from backend
   useEffect(() => {
@@ -97,6 +88,24 @@ export default function TaskManager() {
     await fetch(`/api/tasks/${id}`, { method: "DELETE" });
     setTasks(tasks.filter((t: Task) => t.id !== id));
     setLoading(false);
+  };
+
+  // Toggle task expansion
+  const toggleTaskExpansion = (taskId: number) => {
+    const newExpanded = new Set(expandedTasks);
+    if (newExpanded.has(taskId)) {
+      newExpanded.delete(taskId);
+    } else {
+      newExpanded.add(taskId);
+    }
+    setExpandedTasks(newExpanded);
+  };
+
+  // Update task logs
+  const updateTaskLogs = (taskId: number, logs: TaskLog[]) => {
+    setTasks(tasks.map(task => 
+      task.id === taskId ? { ...task, logs } : task
+    ));
   };
 
   return (
@@ -282,6 +291,32 @@ export default function TaskManager() {
                   </span>
                 )}
               </div>
+            )}
+            
+            {/* Logs section */}
+            <div style={{ marginTop: "0.5rem", marginLeft: "2.75rem" }}>
+              <button
+                onClick={() => toggleTaskExpansion(task.id)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: SCHOOL_BUS_YELLOW,
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  textDecoration: "underline",
+                  padding: 0
+                }}
+              >
+                {expandedTasks.has(task.id) ? "Hide Logs" : `Show Logs ${task.logs ? `(${task.logs.length})` : "(0)"}`}
+              </button>
+            </div>
+            
+            {expandedTasks.has(task.id) && (
+              <TaskLogs
+                taskId={task.id}
+                logs={task.logs || []}
+                onLogsUpdate={(logs) => updateTaskLogs(task.id, logs)}
+              />
             )}
           </div>
         ))}

@@ -14,10 +14,11 @@ const ai = new GoogleGenAI({ apiKey });
 const SYSTEM_PROMPT = `You are an intelligent task management assistant. Your primary role is to help users manage their tasks efficiently using the available functions.
 
 AVAILABLE FUNCTIONS:
-1. create_task - Creates new tasks with title, description, optional status (pending/in_progress/completed), and optional scheduling (date, start time, end time)
-2. edit_task - Modifies existing tasks by ID, can update any field
+1. create_task - Creates new tasks with title, description, optional status (pending/in_progress/completed), optional scheduling (date, start time, end time), and optional initial_log
+2. edit_task - Modifies existing tasks by ID, can update any field, and can add a log entry with add_log parameter
 3. delete_task - Removes tasks by ID
-4. fetch_tasks - Retrieves all tasks to display or analyze
+4. fetch_tasks - Retrieves all tasks to display or analyze, including their logs
+5. add_task_log - Adds a log entry to an existing task for progress updates, notes, or status changes
 
 GUIDELINES:
 - Always be helpful, friendly, and proactive in task management
@@ -28,8 +29,11 @@ GUIDELINES:
 - For time-sensitive requests, always ask about or suggest time slots
 - Provide clear confirmations after task operations
 - If a task operation fails, explain what went wrong and suggest alternatives
-- When showing tasks, present them in a clear, organized format
+- When showing tasks, present them in a clear, organized format including logs if they exist
 - Help users prioritize and organize their tasks effectively
+- When users want to add notes, updates, or progress information to existing tasks, use add_task_log
+- When displaying tasks, include relevant log information to provide context
+- Encourage users to log their progress and updates on tasks
 
 TASK STATUS MANAGEMENT:
 - Use "pending" for new tasks that haven't been started
@@ -76,7 +80,7 @@ export async function POST(req: NextRequest) {
     // --- Gemini function declarations for task management ---
     const createTaskFunctionDeclaration = {
       name: 'create_task',
-      description: 'Creates a new task with a title, description, optional status, and optional scheduling (date, start time, end time).',
+      description: 'Creates a new task with a title, description, optional status, optional scheduling (date, start time, end time), and optional initial log entry.',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -99,6 +103,10 @@ export async function POST(req: NextRequest) {
             type: Type.STRING,
             description: 'The end time for the task (optional, format: "HH:MM" in 24-hour format like "20:00").',
           },
+          initial_log: {
+            type: Type.STRING,
+            description: 'An optional initial log entry for the task (e.g., creation notes, initial thoughts).',
+          },
         },
         required: ['title', 'description'],
       },
@@ -118,7 +126,7 @@ export async function POST(req: NextRequest) {
 
     const editTaskFunctionDeclaration = {
       name: 'edit_task',
-      description: 'Edits an existing task. Provide the task id and any fields to update.',
+      description: 'Edits an existing task. Provide the task id and any fields to update. Can also add a log entry during the edit.',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -142,6 +150,10 @@ export async function POST(req: NextRequest) {
             type: Type.STRING,
             description: 'The new end time for the task (optional, format: "HH:MM" in 24-hour format like "20:00").',
           },
+          add_log: {
+            type: Type.STRING,
+            description: 'An optional log entry to add when editing the task (e.g., reason for change, progress update).',
+          },
         },
         required: ['id'],
       },
@@ -149,11 +161,24 @@ export async function POST(req: NextRequest) {
 
     const fetchTasksFunctionDeclaration = {
       name: 'fetch_tasks',
-      description: 'Fetches all tasks with their details, including id, title, description, status, task_date, start_time, and end_time.',
+      description: 'Fetches all tasks with their details, including id, title, description, status, task_date, start_time, end_time, and logs.',
       parameters: {
         type: Type.OBJECT,
         properties: {},
         required: [],
+      },
+    };
+
+    const addTaskLogFunctionDeclaration = {
+      name: 'add_task_log',
+      description: 'Adds a log entry to an existing task. Use this when users want to add notes, updates, or progress information to a task.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          task_id: { type: Type.NUMBER, description: 'The unique identifier of the task to add a log entry to.' },
+          content: { type: Type.STRING, description: 'The content of the log entry.' },
+        },
+        required: ['task_id', 'content'],
       },
     };
 
@@ -163,11 +188,12 @@ export async function POST(req: NextRequest) {
     let functionCallHandled = false;
     const config = {
       systemInstruction: SYSTEM_PROMPT,
-      tools: [{ functionDeclarations: [createTaskFunctionDeclaration, deleteTaskFunctionDeclaration, editTaskFunctionDeclaration, fetchTasksFunctionDeclaration] }],
+      tools: [{ functionDeclarations: [createTaskFunctionDeclaration, deleteTaskFunctionDeclaration, editTaskFunctionDeclaration, fetchTasksFunctionDeclaration, addTaskLogFunctionDeclaration] }],
     };
     // Import new handlers
     const { deleteTaskFromAI, editTaskFromAI } = await import('../../aichat/editDeleteTaskFromAI');
     const { fetchTasksFromAI } = await import('../../aichat/fetchTasksFromAI');
+    const { addTaskLogFromAI } = await import('../../aichat/addTaskLogFromAI');
     while (true) {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -186,6 +212,7 @@ export async function POST(req: NextRequest) {
             task_date?: string | null;
             start_time?: string | null;
             end_time?: string | null;
+            initial_log?: string | null;
           };
           const createdTask = await createTaskFromAI(args);
           const functionResponsePart = {
@@ -216,6 +243,7 @@ export async function POST(req: NextRequest) {
             task_date?: string | null;
             start_time?: string | null;
             end_time?: string | null;
+            add_log?: string | null;
           };
           const editResult = await editTaskFromAI(args);
           const functionResponsePart = {
@@ -231,6 +259,17 @@ export async function POST(req: NextRequest) {
           const functionResponsePart = {
             name: functionCall.name,
             response: { result: tasks },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'add_task_log' && functionCall.args) {
+          const args = functionCall.args as { task_id: number; content: string };
+          const logResult = await addTaskLogFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: logResult },
           };
           contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
           contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });

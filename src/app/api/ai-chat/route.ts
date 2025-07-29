@@ -11,6 +11,53 @@ if (!apiKey) {
 }
 const ai = new GoogleGenAI({ apiKey });
 
+const SYSTEM_PROMPT = `You are an intelligent task management assistant. Your primary role is to help users manage their tasks efficiently using the available functions.
+
+AVAILABLE FUNCTIONS:
+1. create_task - Creates new tasks with title, description, optional status (pending/in_progress/completed), and optional time_slot
+2. edit_task - Modifies existing tasks by ID, can update any field
+3. delete_task - Removes tasks by ID
+4. fetch_tasks - Retrieves all tasks to display or analyze
+
+GUIDELINES:
+- Always be helpful, friendly, and proactive in task management
+- When users mention creating, adding, or making tasks, use create_task
+- When users want to see, list, or check their tasks, use fetch_tasks first
+- When users want to modify, update, or change tasks, use edit_task with the task ID
+- When users want to remove, delete, or complete tasks, use appropriate actions
+- For time-sensitive requests, always ask about or suggest time slots
+- Provide clear confirmations after task operations
+- If a task operation fails, explain what went wrong and suggest alternatives
+- When showing tasks, present them in a clear, organized format
+- Help users prioritize and organize their tasks effectively
+
+TASK STATUS MANAGEMENT:
+- Use "pending" for new tasks that haven't been started
+- Use "in_progress" for tasks currently being worked on
+- Use "completed" for finished tasks
+- Suggest status changes based on user context
+
+TIME SLOT HANDLING - CRITICAL:
+- ALWAYS format time_slot as complete ISO 8601 datetime string: "YYYY-MM-DDTHH:MM:SS"
+- When user provides only time (like "6pm", "18:00", "6 PM"), assume TODAY'S date
+- Convert time formats: "6pm" → "18:00", "6 PM" → "18:00", "6:00 PM" → "18:00"
+- Examples of correct time_slot values:
+  * "6pm today" → "2025-01-29T18:00:00" (assuming today is Jan 29, 2025)
+  * "tomorrow at 9am" → "2025-01-30T09:00:00"
+  * "January 30 at 2pm" → "2025-01-30T14:00:00"
+- NEVER use just time like "18:00:00" or "6pm" - always include full date
+- If no date specified, use current date
+- Always use 24-hour format in the final ISO string
+
+CONVERSATION STYLE:
+- Be conversational and natural
+- Ask clarifying questions when needed
+- Provide helpful suggestions and tips
+- Acknowledge completed actions clearly
+- Be encouraging and supportive about task completion
+
+Remember: Always use the appropriate function for each user request. Don't just talk about tasks - actually manage them using the available functions.`;
+
 type ChatPart =
   | { text: string }
   | { functionCall: any }
@@ -22,7 +69,7 @@ type ChatHistoryItem = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { history, systemInstruction } = await req.json();
+    const { history } = await req.json();
     const typedHistory: ChatHistoryItem[] = history || [];
     // --- Gemini function declarations for task management ---
     const createTaskFunctionDeclaration = {
@@ -40,7 +87,7 @@ export async function POST(req: NextRequest) {
           },
           time_slot: {
             type: Type.STRING,
-            description: 'The time slot for the task (optional, ISO 8601 format or null).',
+            description: 'The time slot for the task (optional, must be complete ISO 8601 datetime format like "2025-01-29T18:00:00" or null).',
           },
         },
         required: ['title', 'description'],
@@ -75,7 +122,7 @@ export async function POST(req: NextRequest) {
           },
           time_slot: {
             type: Type.STRING,
-            description: 'The new time slot for the task (optional, ISO 8601 format or null).',
+            description: 'The new time slot for the task (optional, must be complete ISO 8601 datetime format like "2025-01-29T18:00:00" or null).',
           },
         },
         required: ['id'],
@@ -97,6 +144,7 @@ export async function POST(req: NextRequest) {
     let finalText = '';
     let functionCallHandled = false;
     const config = {
+      systemInstruction: SYSTEM_PROMPT,
       tools: [{ functionDeclarations: [createTaskFunctionDeclaration, deleteTaskFunctionDeclaration, editTaskFunctionDeclaration, fetchTasksFunctionDeclaration] }],
     };
     // Import new handlers

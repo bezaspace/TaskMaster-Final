@@ -22,7 +22,7 @@ export default function TaskManager() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
   const [description, setDescription] = useState("");
-  const [timeSlot, setTimeSlot] = useState("");
+  const [timeSlot, setTimeSlot] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   // Fetch tasks from backend
@@ -121,7 +121,7 @@ export default function TaskManager() {
         />
         <input
           type="datetime-local"
-          value={timeSlot}
+          value={timeSlot || ""}
           onChange={e => setTimeSlot(e.target.value)}
           placeholder="Time slot"
           style={{

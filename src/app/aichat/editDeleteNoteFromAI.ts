@@ -1,3 +1,5 @@
+import { convertToIndianTime } from '../../../lib/timeUtils';
+
 // Functions to edit and delete a note via the API, to be called from Gemini function calling
 
 export async function deleteNoteFromAI({ id }: { id: string }) {
@@ -67,5 +69,14 @@ export async function editNoteFromAI({ id, title, content }: {
     throw new Error(`Failed to edit note: ${res.statusText}`);
   }
   
-  return res.json();
+  const result = await res.json();
+  
+  // Convert UTC timestamps to IST for AI display
+  const resultWithConvertedTimestamps = {
+    ...result,
+    created_at: result.created_at ? convertToIndianTime(result.created_at) : null,
+    updated_at: result.updated_at ? convertToIndianTime(result.updated_at) : null
+  };
+  
+  return resultWithConvertedTimestamps;
 }

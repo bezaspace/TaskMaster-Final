@@ -1,4 +1,4 @@
-import { validateTimeRange, parseToTaskDate, parseToTaskTime } from '../../../lib/timeUtils';
+import { validateTimeRange, parseToTaskDate, parseToTaskTime, convertToIndianTime } from '../../../lib/timeUtils';
 
 // Functions to edit and delete a task via the API, to be called from Gemini function calling
 
@@ -76,5 +76,12 @@ export async function editTaskFromAI({ id, title, description, status, task_date
     });
   }
   
-  return result;
+  // Convert UTC timestamps to IST for AI display
+  const resultWithConvertedTimestamps = {
+    ...result,
+    created_at: result.created_at ? convertToIndianTime(result.created_at) : null,
+    updated_at: result.updated_at ? convertToIndianTime(result.updated_at) : null
+  };
+  
+  return resultWithConvertedTimestamps;
 }

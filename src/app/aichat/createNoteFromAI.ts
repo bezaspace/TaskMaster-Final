@@ -1,3 +1,5 @@
+import { convertToIndianTime } from '../../../lib/timeUtils';
+
 // Function to create a note via the API, to be called from Gemini function calling
 export async function createNoteFromAI({ title, content }: {
   title: string;
@@ -23,5 +25,14 @@ export async function createNoteFromAI({ title, content }: {
     throw new Error(`Failed to create note: ${res.statusText}`);
   }
   
-  return res.json();
+  const note = await res.json();
+  
+  // Convert UTC timestamps to IST for AI display
+  const noteWithConvertedTimestamps = {
+    ...note,
+    created_at: note.created_at ? convertToIndianTime(note.created_at) : null,
+    updated_at: note.updated_at ? convertToIndianTime(note.updated_at) : null
+  };
+  
+  return noteWithConvertedTimestamps;
 }

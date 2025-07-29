@@ -1,3 +1,5 @@
+import { convertToIndianTime } from '../../../lib/timeUtils';
+
 // Function to add a log entry to a task via the API, to be called from Gemini function calling
 export async function addTaskLogFromAI({ task_id, content }: {
   task_id: number;
@@ -23,5 +25,13 @@ export async function addTaskLogFromAI({ task_id, content }: {
     throw new Error(`Failed to add log entry: ${res.statusText}`);
   }
   
-  return res.json();
+  const logEntry = await res.json();
+  
+  // Convert UTC timestamps to IST for AI display
+  const logWithConvertedTimestamp = {
+    ...logEntry,
+    created_at: logEntry.created_at ? convertToIndianTime(logEntry.created_at) : null
+  };
+  
+  return logWithConvertedTimestamp;
 }

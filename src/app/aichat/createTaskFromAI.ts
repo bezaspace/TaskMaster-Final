@@ -1,4 +1,4 @@
-import { validateTimeRange, parseToTaskDate, parseToTaskTime } from '../../../lib/timeUtils';
+import { validateTimeRange, parseToTaskDate, parseToTaskTime, convertToIndianTime } from '../../../lib/timeUtils';
 
 // Function to create a task via the API, to be called from Gemini function calling
 export async function createTaskFromAI({ title, description, status = 'pending', task_date = null, start_time = null, end_time = null, initial_log = null }: {
@@ -60,5 +60,12 @@ export async function createTaskFromAI({ title, description, status = 'pending',
     });
   }
   
-  return task;
+  // Convert UTC timestamps to IST for AI display
+  const taskWithConvertedTimestamps = {
+    ...task,
+    created_at: task.created_at ? convertToIndianTime(task.created_at) : null,
+    updated_at: task.updated_at ? convertToIndianTime(task.updated_at) : null
+  };
+  
+  return taskWithConvertedTimestamps;
 }

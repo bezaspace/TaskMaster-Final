@@ -14,7 +14,7 @@ const ai = new GoogleGenAI({ apiKey });
 const SYSTEM_PROMPT = `You are an intelligent task management assistant. Your primary role is to help users manage their tasks efficiently using the available functions.
 
 AVAILABLE FUNCTIONS:
-1. create_task - Creates new tasks with title, description, optional status (pending/in_progress/completed), and optional time_slot
+1. create_task - Creates new tasks with title, description, optional status (pending/in_progress/completed), and optional scheduling (date, start time, end time)
 2. edit_task - Modifies existing tasks by ID, can update any field
 3. delete_task - Removes tasks by ID
 4. fetch_tasks - Retrieves all tasks to display or analyze
@@ -37,17 +37,19 @@ TASK STATUS MANAGEMENT:
 - Use "completed" for finished tasks
 - Suggest status changes based on user context
 
-TIME SLOT HANDLING - CRITICAL:
-- ALWAYS format time_slot as complete ISO 8601 datetime string: "YYYY-MM-DDTHH:MM:SS"
+TASK SCHEDULING HANDLING - CRITICAL:
+- Use separate fields for date and times: task_date (DATE), start_time (TIME), end_time (TIME)
+- Format task_date as "YYYY-MM-DD" (e.g., "2025-01-29")
+- Format start_time and end_time as "HH:MM" in 24-hour format (e.g., "18:00", "20:00")
 - When user provides only time (like "6pm", "18:00", "6 PM"), assume TODAY'S date
 - Convert time formats: "6pm" → "18:00", "6 PM" → "18:00", "6:00 PM" → "18:00"
-- Examples of correct time_slot values:
-  * "6pm today" → "2025-01-29T18:00:00" (assuming today is Jan 29, 2025)
-  * "tomorrow at 9am" → "2025-01-30T09:00:00"
-  * "January 30 at 2pm" → "2025-01-30T14:00:00"
-- NEVER use just time like "18:00:00" or "6pm" - always include full date
+- Examples of correct scheduling values:
+  * "6pm to 8pm today" → task_date: "2025-01-29", start_time: "18:00", end_time: "20:00"
+  * "tomorrow 9am-11am" → task_date: "2025-01-30", start_time: "09:00", end_time: "11:00"
+  * "January 30 from 2pm to 4pm" → task_date: "2025-01-30", start_time: "14:00", end_time: "16:00"
 - If no date specified, use current date
-- Always use 24-hour format in the final ISO string
+- End time must be after start time on the same day
+- Tasks are limited to single-day duration
 
 CONVERSATION STYLE:
 - Be conversational and natural
@@ -74,7 +76,7 @@ export async function POST(req: NextRequest) {
     // --- Gemini function declarations for task management ---
     const createTaskFunctionDeclaration = {
       name: 'create_task',
-      description: 'Creates a new task with a title, description, optional status, and optional time slot.',
+      description: 'Creates a new task with a title, description, optional status, and optional scheduling (date, start time, end time).',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -85,9 +87,17 @@ export async function POST(req: NextRequest) {
             description: 'The status of the task (optional, defaults to "pending").',
             enum: ['pending', 'in_progress', 'completed'],
           },
-          time_slot: {
+          task_date: {
             type: Type.STRING,
-            description: 'The time slot for the task (optional, must be complete ISO 8601 datetime format like "2025-01-29T18:00:00" or null).',
+            description: 'The date for the task (optional, format: "YYYY-MM-DD" like "2025-01-29").',
+          },
+          start_time: {
+            type: Type.STRING,
+            description: 'The start time for the task (optional, format: "HH:MM" in 24-hour format like "18:00").',
+          },
+          end_time: {
+            type: Type.STRING,
+            description: 'The end time for the task (optional, format: "HH:MM" in 24-hour format like "20:00").',
           },
         },
         required: ['title', 'description'],
@@ -120,9 +130,17 @@ export async function POST(req: NextRequest) {
             description: 'The new status of the task (optional).',
             enum: ['pending', 'in_progress', 'completed'],
           },
-          time_slot: {
+          task_date: {
             type: Type.STRING,
-            description: 'The new time slot for the task (optional, must be complete ISO 8601 datetime format like "2025-01-29T18:00:00" or null).',
+            description: 'The new date for the task (optional, format: "YYYY-MM-DD" like "2025-01-29").',
+          },
+          start_time: {
+            type: Type.STRING,
+            description: 'The new start time for the task (optional, format: "HH:MM" in 24-hour format like "18:00").',
+          },
+          end_time: {
+            type: Type.STRING,
+            description: 'The new end time for the task (optional, format: "HH:MM" in 24-hour format like "20:00").',
           },
         },
         required: ['id'],
@@ -131,7 +149,7 @@ export async function POST(req: NextRequest) {
 
     const fetchTasksFunctionDeclaration = {
       name: 'fetch_tasks',
-      description: 'Fetches all tasks with their details, including id, title, description, status, and time_slot.',
+      description: 'Fetches all tasks with their details, including id, title, description, status, task_date, start_time, and end_time.',
       parameters: {
         type: Type.OBJECT,
         properties: {},
@@ -165,7 +183,9 @@ export async function POST(req: NextRequest) {
             title: string;
             description: string;
             status?: 'pending' | 'in_progress' | 'completed';
-            time_slot?: string | null;
+            task_date?: string | null;
+            start_time?: string | null;
+            end_time?: string | null;
           };
           const createdTask = await createTaskFromAI(args);
           const functionResponsePart = {
@@ -193,7 +213,9 @@ export async function POST(req: NextRequest) {
             title?: string;
             description?: string;
             status?: 'pending' | 'in_progress' | 'completed';
-            time_slot?: string | null;
+            task_date?: string | null;
+            start_time?: string | null;
+            end_time?: string | null;
           };
           const editResult = await editTaskFromAI(args);
           const functionResponsePart = {

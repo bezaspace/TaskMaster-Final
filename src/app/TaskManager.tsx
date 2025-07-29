@@ -10,7 +10,9 @@ type Task = {
   title: string;
   description?: string;
   status: string;
-  time_slot?: string | null;
+  task_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   done?: boolean;
 };
 
@@ -22,7 +24,9 @@ export default function TaskManager() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
   const [description, setDescription] = useState("");
-  const [timeSlot, setTimeSlot] = useState<string>("");
+  const [taskDate, setTaskDate] = useState<string>("");
+  const [startTime, setStartTime] = useState<string>("");
+  const [endTime, setEndTime] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   // Fetch tasks from backend
@@ -34,6 +38,13 @@ export default function TaskManager() {
 
   const addTask = async () => {
     if (input.trim() === "") return;
+    
+    // Basic validation: end time must be after start time if both are provided
+    if (startTime && endTime && endTime <= startTime) {
+      alert('End time must be after start time');
+      return;
+    }
+    
     setLoading(true);
     const res = await fetch("/api/tasks", {
       method: "POST",
@@ -42,14 +53,18 @@ export default function TaskManager() {
         title: input,
         description: description,
         status: "pending",
-        time_slot: timeSlot || null
+        task_date: taskDate || null,
+        start_time: startTime || null,
+        end_time: endTime || null
       })
     });
     const newTask = await res.json();
     setTasks([...tasks, { ...newTask, text: newTask.title, done: newTask.status === "done" }]);
     setInput("");
     setDescription("");
-    setTimeSlot("");
+    setTaskDate("");
+    setStartTime("");
+    setEndTime("");
     setLoading(false);
   };
 
@@ -65,7 +80,9 @@ export default function TaskManager() {
         title: task.title,
         description: task.description,
         status: updatedStatus,
-        time_slot: task.time_slot || null
+        task_date: task.task_date || null,
+        start_time: task.start_time || null,
+        end_time: task.end_time || null
       })
     });
     setTasks(tasks.map(t =>
@@ -120,10 +137,10 @@ export default function TaskManager() {
           }}
         />
         <input
-          type="datetime-local"
-          value={timeSlot || ""}
-          onChange={e => setTimeSlot(e.target.value)}
-          placeholder="Time slot"
+          type="date"
+          value={taskDate || ""}
+          onChange={e => setTaskDate(e.target.value)}
+          placeholder="Task date"
           style={{
             background: "#222",
             border: `1px solid ${SCHOOL_BUS_YELLOW}`,
@@ -133,6 +150,38 @@ export default function TaskManager() {
             outline: "none"
           }}
         />
+        <div style={{ display: "flex", gap: "1rem" }}>
+          <input
+            type="time"
+            value={startTime || ""}
+            onChange={e => setStartTime(e.target.value)}
+            placeholder="Start time"
+            style={{
+              background: "#222",
+              border: `1px solid ${SCHOOL_BUS_YELLOW}`,
+              color: "#fff",
+              padding: "0.75rem 1rem",
+              borderRadius: "8px",
+              outline: "none",
+              flex: 1
+            }}
+          />
+          <input
+            type="time"
+            value={endTime || ""}
+            onChange={e => setEndTime(e.target.value)}
+            placeholder="End time"
+            style={{
+              background: "#222",
+              border: `1px solid ${SCHOOL_BUS_YELLOW}`,
+              color: "#fff",
+              padding: "0.75rem 1rem",
+              borderRadius: "8px",
+              outline: "none",
+              flex: 1
+            }}
+          />
+        </div>
         <button
           onClick={addTask}
           style={{
@@ -209,9 +258,29 @@ export default function TaskManager() {
                 {task.description}
               </div>
             )}
-            {task.time_slot && (
+            {(task.task_date || task.start_time || task.end_time) && (
               <div style={{ color: SCHOOL_BUS_YELLOW, marginTop: "0.25rem", marginLeft: "2.75rem", fontWeight: 600 }}>
-                Time Slot: {new Date(task.time_slot).toLocaleString()}
+                {task.task_date && (
+                  <span>
+                    {new Date(task.task_date + 'T00:00:00').toLocaleDateString()}
+                    {(task.start_time || task.end_time) && ': '}
+                  </span>
+                )}
+                {task.start_time && task.end_time && (
+                  <span>
+                    {new Date(`2000-01-01T${task.start_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(`2000-01-01T${task.end_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </span>
+                )}
+                {task.start_time && !task.end_time && (
+                  <span>
+                    {new Date(`2000-01-01T${task.start_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (start only)
+                  </span>
+                )}
+                {!task.start_time && task.end_time && (
+                  <span>
+                    (end only) {new Date(`2000-01-01T${task.end_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </span>
+                )}
               </div>
             )}
           </div>

@@ -15,12 +15,14 @@ export async function deleteTaskFromAI({ id }: { id: string }) {
   return res.json();
 }
 
-export async function editTaskFromAI({ id, title, description, status, time_slot }: {
+export async function editTaskFromAI({ id, title, description, status, task_date, start_time, end_time }: {
   id: string;
   title?: string;
   description?: string;
   status?: 'pending' | 'in_progress' | 'completed';
-  time_slot?: string | null;
+  task_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
 }) {
   let url = `/api/tasks/${id}`;
   if (typeof window === 'undefined') {
@@ -32,7 +34,7 @@ export async function editTaskFromAI({ id, title, description, status, time_slot
   const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, description, status, time_slot }),
+    body: JSON.stringify({ title, description, status, task_date, start_time, end_time }),
   });
   if (!res.ok) {
     throw new Error(`Failed to edit task: ${res.statusText}`);

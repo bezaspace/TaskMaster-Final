@@ -13,6 +13,9 @@ db.serialize(() => {
     title TEXT NOT NULL,
     description TEXT,
     status TEXT DEFAULT 'pending',
+    task_date DATE,
+    start_time TIME,
+    end_time TIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`, (err) => {

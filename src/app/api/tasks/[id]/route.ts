@@ -33,28 +33,37 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const title = pickField(data.title, existing.title);
   const description = pickField(data.description, existing.description);
   const status = pickField(data.status, existing.status);
-  const time_slot = pickField(data.time_slot, existing.time_slot);
+  const task_date = pickField(data.task_date, existing.task_date);
+  const start_time = pickField(data.start_time, existing.start_time);
+  const end_time = pickField(data.end_time, existing.end_time);
+
+  // Basic validation: end time must be after start time if both are provided
+  if (start_time && end_time && end_time <= start_time) {
+    return new Response(JSON.stringify({ error: 'End time must be after start time' }), { status: 400 });
+  }
 
   // Log incoming and merged values for debugging
   console.log('EditTask PUT incoming data:', data);
-  console.log('EditTask PUT merged:', { title, description, status, time_slot });
+  console.log('EditTask PUT merged:', { title, description, status, task_date, start_time, end_time });
 
   // Defensive: required fields must not be null, undefined, or empty string
   if (!title || !description || !status || title === '' || description === '' || status === '') {
-    console.error('Edit task failed: missing required fields', { title, description, status, time_slot });
+    console.error('Edit task failed: missing required fields', { title, description, status, task_date, start_time, end_time });
     return new Response(
       JSON.stringify({ error: 'Missing required fields: title, description, and status are required.' }),
       { status: 400 }
     );
   }
   // Log merged values for debugging
-  console.log('Updating task', { id, title, description, status, time_slot });
+  console.log('Updating task', { id, title, description, status, task_date, start_time, end_time });
   await db.run(
-    'UPDATE tasks SET title = ?, description = ?, status = ?, time_slot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    'UPDATE tasks SET title = ?, description = ?, status = ?, task_date = ?, start_time = ?, end_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
     title,
     description,
     status,
-    time_slot || null,
+    task_date || null,
+    start_time || null,
+    end_time || null,
     id
   );
   return new Response(JSON.stringify({ success: true }), { status: 200 });

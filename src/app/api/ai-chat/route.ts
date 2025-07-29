@@ -48,7 +48,7 @@ function getCurrentDateContext() {
 function getSystemPrompt() {
   const dateContext = getCurrentDateContext();
 
-  return `You are an intelligent task management assistant. Your primary role is to help users manage their tasks efficiently using the available functions.
+  return `You are an intelligent task and notes management assistant. Your primary role is to help users manage their tasks and notes efficiently using the available functions.
 
 CURRENT DATE & TIME CONTEXT:
 - Today is: ${dateContext.todayDisplay} (${dateContext.today})
@@ -57,28 +57,41 @@ CURRENT DATE & TIME CONTEXT:
 - Use these dates when users say "today", "tomorrow", or don't specify a date
 
 AVAILABLE FUNCTIONS:
+
+TASK FUNCTIONS:
 1. create_task - Creates new tasks with title, description, optional status (pending/in_progress/completed), optional scheduling (date, start time, end time), and optional initial_log
 2. edit_task - Modifies existing tasks by ID, can update any field, and can add a log entry with add_log parameter
 3. delete_task - Removes tasks by ID
 4. fetch_tasks - Retrieves all tasks to display or analyze, including their logs
 5. add_task_log - Adds a log entry to an existing task for progress updates, notes, or status changes
 
+NOTE FUNCTIONS:
+6. create_note - Creates new notes with title and content
+7. edit_note - Modifies existing notes by ID, can update title and/or content
+8. delete_note - Removes notes by ID
+9. fetch_notes - Retrieves all notes to display or analyze
+
 GUIDELINES:
-- Always be helpful, friendly, and proactive in task management
+- Always be helpful, friendly, and proactive in task and notes management
 - When users mention creating, adding, or making tasks, use create_task
+- When users mention creating, writing, or making notes, use create_note
 - When users want to see, list, or check their tasks, use fetch_tasks first
+- When users want to see, list, or check their notes, use fetch_notes first
 - When users want to modify, update, or change tasks, use edit_task
-- If the user does not provide a task ID, fetch all tasks and search for the task by name (case-insensitive, fuzzy match allowed). If multiple tasks match, clarify with the user before proceeding.
+- When users want to modify, update, or change notes, use edit_note
+- If the user does not provide a task/note ID, fetch all tasks/notes and search by name (case-insensitive, fuzzy match allowed). If multiple items match, clarify with the user before proceeding.
 - When inferring dates, times, or log entries from natural language, always confirm your interpretation with the user before making changes, especially if the input is ambiguous.
-- When users want to remove, delete, or complete tasks, use appropriate actions
+- When users want to remove, delete, or complete tasks/notes, use appropriate actions
 - For time-sensitive requests, always ask about or suggest time slots
-- Provide clear confirmations after task operations
-- If a task operation fails, explain what went wrong and suggest alternatives
+- Provide clear confirmations after task/note operations
+- If a task/note operation fails, explain what went wrong and suggest alternatives
 - When showing tasks, present them in a clear, organized format including logs if they exist
-- Help users prioritize and organize their tasks effectively
+- When showing notes, present them in a clear, organized format with title and content
+- Help users prioritize and organize their tasks and notes effectively
 - When users want to add notes, updates, or progress information to existing tasks, use add_task_log
 - When displaying tasks, include relevant log information to provide context
 - Encourage users to log their progress and updates on tasks
+- Distinguish between task logs (progress updates) and standalone notes (independent information)
 
 TASK STATUS MANAGEMENT:
 - Use "pending" for new tasks that haven't been started
@@ -107,14 +120,15 @@ CONVERSATION STYLE:
 - Ask clarifying questions when needed
 - Provide helpful suggestions and tips
 - Acknowledge completed actions clearly
-- Be encouraging and supportive about task completion
+- Be encouraging and supportive about task completion and note organization
 
 IMPORTANT:
-- If the user requests to update a task but does not provide a task ID, always fetch all tasks and search for the task by name. Use fuzzy matching and confirm with the user if there are multiple possible matches.
+- If the user requests to update a task/note but does not provide an ID, always fetch all tasks/notes and search by name. Use fuzzy matching and confirm with the user if there are multiple possible matches.
 - When inferring or updating dates, times, or logs from natural language, always confirm your interpretation with the user before making changes, especially if the input is ambiguous or could be interpreted in multiple ways.
-- After making any changes, clearly summarize what was updated, including the task name, date, time, and any log entries added.
+- After making any changes, clearly summarize what was updated, including the task/note name and any changes made.
+- Help users understand the difference between tasks (actionable items with scheduling) and notes (information storage)
 
-Remember: Always use the appropriate function for each user request. Don't just talk about tasks - actually manage them using the available functions.`;
+Remember: Always use the appropriate function for each user request. Don't just talk about tasks and notes - actually manage them using the available functions.`;
 }
 
 type ChatPart =
@@ -235,18 +249,82 @@ export async function POST(req: NextRequest) {
       },
     };
 
+    const createNoteFunctionDeclaration = {
+      name: 'create_note',
+      description: 'Creates a new note with a title and content.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: 'The title of the note (required).' },
+          content: { type: Type.STRING, description: 'The content/body of the note (required).' },
+        },
+        required: ['title', 'content'],
+      },
+    };
+
+    const editNoteFunctionDeclaration = {
+      name: 'edit_note',
+      description: 'Edits an existing note. Provide the note id and any fields to update (title and/or content).',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING, description: 'The unique identifier of the note to edit.' },
+          title: { type: Type.STRING, description: 'The new title of the note (optional).' },
+          content: { type: Type.STRING, description: 'The new content of the note (optional).' },
+        },
+        required: ['id'],
+      },
+    };
+
+    const deleteNoteFunctionDeclaration = {
+      name: 'delete_note',
+      description: 'Deletes a note by its unique identifier.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING, description: 'The unique identifier of the note to delete.' },
+        },
+        required: ['id'],
+      },
+    };
+
+    const fetchNotesFunctionDeclaration = {
+      name: 'fetch_notes',
+      description: 'Fetches all notes with their details, including id, title, content, created_at, and updated_at.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
+        required: [],
+      },
+    };
+
     // --- Function calling loop ---
     let contents = typedHistory;
     let finalText = '';
     let functionCallHandled = false;
     const config = {
       systemInstruction: getSystemPrompt(),
-      tools: [{ functionDeclarations: [createTaskFunctionDeclaration, deleteTaskFunctionDeclaration, editTaskFunctionDeclaration, fetchTasksFunctionDeclaration, addTaskLogFunctionDeclaration] }],
+      tools: [{ functionDeclarations: [
+        createTaskFunctionDeclaration, 
+        deleteTaskFunctionDeclaration, 
+        editTaskFunctionDeclaration, 
+        fetchTasksFunctionDeclaration, 
+        addTaskLogFunctionDeclaration,
+        createNoteFunctionDeclaration,
+        editNoteFunctionDeclaration,
+        deleteNoteFunctionDeclaration,
+        fetchNotesFunctionDeclaration
+      ] }],
     };
-    // Import new handlers
+    // Import task handlers
     const { deleteTaskFromAI, editTaskFromAI } = await import('../../aichat/editDeleteTaskFromAI');
     const { fetchTasksFromAI } = await import('../../aichat/fetchTasksFromAI');
     const { addTaskLogFromAI } = await import('../../aichat/addTaskLogFromAI');
+    
+    // Import note handlers
+    const { createNoteFromAI } = await import('../../aichat/createNoteFromAI');
+    const { editNoteFromAI, deleteNoteFromAI } = await import('../../aichat/editDeleteNoteFromAI');
+    const { fetchNotesFromAI } = await import('../../aichat/fetchNotesFromAI');
     while (true) {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -323,6 +401,49 @@ export async function POST(req: NextRequest) {
           const functionResponsePart = {
             name: functionCall.name,
             response: { result: logResult },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'create_note' && functionCall.args) {
+          const args = functionCall.args as { title: string; content: string };
+          const createdNote = await createNoteFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: createdNote },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'edit_note' && functionCall.args) {
+          const args = functionCall.args as { id: string; title?: string; content?: string };
+          const editResult = await editNoteFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: editResult },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'delete_note' && functionCall.args) {
+          const args = functionCall.args as { id: string };
+          const deleteResult = await deleteNoteFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: deleteResult },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'fetch_notes') {
+          const notes = await fetchNotesFromAI();
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: notes },
           };
           contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
           contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });

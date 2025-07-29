@@ -1,4 +1,4 @@
-import { getDb } from '../../../../../../lib/db';
+import { getDb, getCurrentDbTimestamp } from '../../../../../../lib/db';
 
 // GET /api/tasks/[id]/logs - Get all logs for a task
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -47,10 +47,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     
     // Create log entry
+    const currentTimestamp = getCurrentDbTimestamp();
     const result = await db.run(
-      'INSERT INTO task_logs (task_id, content) VALUES (?, ?)',
+      'INSERT INTO task_logs (task_id, content, created_at) VALUES (?, ?, ?)',
       id,
-      content.trim()
+      content.trim(),
+      currentTimestamp
     );
     
     // Return the created log entry

@@ -1,3 +1,5 @@
+import { validateTimeRange, parseToTaskDate, parseToTaskTime } from '../../../lib/timeUtils';
+
 // Functions to edit and delete a task via the API, to be called from Gemini function calling
 
 export async function deleteTaskFromAI({ id }: { id: string }) {
@@ -25,6 +27,17 @@ export async function editTaskFromAI({ id, title, description, status, task_date
   end_time?: string | null;
   add_log?: string | null;
 }) {
+  // Parse and validate time inputs if provided
+  const parsedDate = task_date ? parseToTaskDate(task_date) : undefined;
+  const parsedStartTime = start_time ? parseToTaskTime(start_time) : undefined;
+  const parsedEndTime = end_time ? parseToTaskTime(end_time) : undefined;
+  
+  // Validate time range if both times are provided
+  if (parsedStartTime !== undefined && parsedEndTime !== undefined) {
+    if (!validateTimeRange(parsedStartTime, parsedEndTime)) {
+      throw new Error('End time must be after start time');
+    }
+  }
   let url = `/api/tasks/${id}`;
   if (typeof window === 'undefined') {
     const base = process.env.VERCEL_URL
@@ -35,7 +48,14 @@ export async function editTaskFromAI({ id, title, description, status, task_date
   const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, description, status, task_date, start_time, end_time }),
+    body: JSON.stringify({ 
+      title, 
+      description, 
+      status, 
+      task_date: parsedDate, 
+      start_time: parsedStartTime, 
+      end_time: parsedEndTime 
+    }),
   });
   if (!res.ok) {
     throw new Error(`Failed to edit task: ${res.statusText}`);

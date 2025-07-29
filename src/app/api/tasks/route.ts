@@ -1,5 +1,5 @@
 
-import { getDb } from '../../../../lib/db';
+import { getDb, getCurrentDbTimestamp } from '../../../../lib/db';
 
 
 
@@ -44,14 +44,17 @@ export async function POST(request: Request) {
       return new Response(JSON.stringify({ error: 'End time must be after start time' }), { status: 400 });
     }
     
+    const currentTimestamp = getCurrentDbTimestamp();
     const result = await db.run(
-      'INSERT INTO tasks (title, description, status, task_date, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO tasks (title, description, status, task_date, start_time, end_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       title,
       description,
       status || 'pending',
       task_date || null,
       start_time || null,
-      end_time || null
+      end_time || null,
+      currentTimestamp,
+      currentTimestamp
     );
     const task = await db.get('SELECT * FROM tasks WHERE id = ?', result.lastID);
     return new Response(JSON.stringify(task), {

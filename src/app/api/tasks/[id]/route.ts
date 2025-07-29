@@ -1,5 +1,5 @@
 
-import { getDb } from '../../../../../lib/db';
+import { getDb, getCurrentDbTimestamp } from '../../../../../lib/db';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -66,14 +66,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
   // Log merged values for debugging
   console.log('Updating task', { id, title, description, status, task_date, start_time, end_time });
+  const currentTimestamp = getCurrentDbTimestamp();
   await db.run(
-    'UPDATE tasks SET title = ?, description = ?, status = ?, task_date = ?, start_time = ?, end_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    'UPDATE tasks SET title = ?, description = ?, status = ?, task_date = ?, start_time = ?, end_time = ?, updated_at = ? WHERE id = ?',
     title,
     description,
     status,
     task_date || null,
     start_time || null,
     end_time || null,
+    currentTimestamp,
     id
   );
   return new Response(JSON.stringify({ success: true }), { status: 200 });

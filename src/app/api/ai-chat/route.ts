@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 
 import { GoogleGenAI, Type } from '@google/genai';
 import { createTaskFromAI } from '../../aichat/createTaskFromAI';
+import { getCurrentDate, getCurrentIndianTime } from '../../../../lib/timeUtils';
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -11,7 +12,49 @@ if (!apiKey) {
 }
 const ai = new GoogleGenAI({ apiKey });
 
-const SYSTEM_PROMPT = `You are an intelligent task management assistant. Your primary role is to help users manage their tasks efficiently using the available functions.
+// Function to get current date context for AI
+function getCurrentDateContext() {
+  const today = getCurrentDate(); // YYYY-MM-DD format
+  const todayDate = new Date(today);
+  const tomorrow = new Date(todayDate);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowFormatted = tomorrow.toISOString().split('T')[0];
+
+  const todayDisplay = todayDate.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const tomorrowDisplay = tomorrow.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  return {
+    today,
+    tomorrow: tomorrowFormatted,
+    todayDisplay,
+    tomorrowDisplay,
+    currentTime: getCurrentIndianTime()
+  };
+}
+
+function getSystemPrompt() {
+  const dateContext = getCurrentDateContext();
+
+  return `You are an intelligent task management assistant. Your primary role is to help users manage their tasks efficiently using the available functions.
+
+CURRENT DATE & TIME CONTEXT:
+- Today is: ${dateContext.todayDisplay} (${dateContext.today})
+- Tomorrow is: ${dateContext.tomorrowDisplay} (${dateContext.tomorrow})
+- Current time (Indian timezone): ${dateContext.currentTime}
+- Use these dates when users say "today", "tomorrow", or don't specify a date
 
 AVAILABLE FUNCTIONS:
 1. create_task - Creates new tasks with title, description, optional status (pending/in_progress/completed), optional scheduling (date, start time, end time), and optional initial_log
@@ -43,17 +86,19 @@ TASK STATUS MANAGEMENT:
 
 TASK SCHEDULING HANDLING - CRITICAL:
 - Use separate fields for date and times: task_date (DATE), start_time (TIME), end_time (TIME)
-- Format task_date as "YYYY-MM-DD" (e.g., "2025-01-29")
+- Format task_date as "YYYY-MM-DD" (e.g., "${dateContext.today}")
 - Format start_time and end_time as "HH:MM" in 24-hour format (e.g., "18:00", "20:00")
-- When user provides only time (like "6pm", "18:00", "6 PM"), assume TODAY'S date
+- When user provides only time (like "6pm", "18:00", "6 PM"), assume TODAY'S date (${dateContext.today})
 - Convert time formats: "6pm" → "18:00", "6 PM" → "18:00", "6:00 PM" → "18:00"
+- All times are handled consistently using the app's time utility functions
 - Examples of correct scheduling values:
-  * "6pm to 8pm today" → task_date: "2025-01-29", start_time: "18:00", end_time: "20:00"
-  * "tomorrow 9am-11am" → task_date: "2025-01-30", start_time: "09:00", end_time: "11:00"
-  * "January 30 from 2pm to 4pm" → task_date: "2025-01-30", start_time: "14:00", end_time: "16:00"
-- If no date specified, use current date
+  * "6pm to 8pm today" → task_date: "${dateContext.today}", start_time: "18:00", end_time: "20:00"
+  * "tomorrow 9am-11am" → task_date: "${dateContext.tomorrow}", start_time: "09:00", end_time: "11:00"
+  * "next Monday from 2pm to 4pm" → calculate the correct date and use format like task_date: "2025-08-04", start_time: "14:00", end_time: "16:00"
+- If no date specified, use current date (${dateContext.today})
 - End time must be after start time on the same day
 - Tasks are limited to single-day duration
+- All timestamps are stored in UTC and displayed in user's local timezone (Asia/Kolkata)
 
 CONVERSATION STYLE:
 - Be conversational and natural
@@ -63,6 +108,7 @@ CONVERSATION STYLE:
 - Be encouraging and supportive about task completion
 
 Remember: Always use the appropriate function for each user request. Don't just talk about tasks - actually manage them using the available functions.`;
+}
 
 type ChatPart =
   | { text: string }
@@ -93,7 +139,7 @@ export async function POST(req: NextRequest) {
           },
           task_date: {
             type: Type.STRING,
-            description: 'The date for the task (optional, format: "YYYY-MM-DD" like "2025-01-29").',
+            description: `The date for the task (optional, format: "YYYY-MM-DD" like "${getCurrentDate()}").`,
           },
           start_time: {
             type: Type.STRING,
@@ -140,7 +186,7 @@ export async function POST(req: NextRequest) {
           },
           task_date: {
             type: Type.STRING,
-            description: 'The new date for the task (optional, format: "YYYY-MM-DD" like "2025-01-29").',
+            description: `The new date for the task (optional, format: "YYYY-MM-DD" like "${getCurrentDate()}").`,
           },
           start_time: {
             type: Type.STRING,
@@ -187,7 +233,7 @@ export async function POST(req: NextRequest) {
     let finalText = '';
     let functionCallHandled = false;
     const config = {
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: getSystemPrompt(),
       tools: [{ functionDeclarations: [createTaskFunctionDeclaration, deleteTaskFunctionDeclaration, editTaskFunctionDeclaration, fetchTasksFunctionDeclaration, addTaskLogFunctionDeclaration] }],
     };
     // Import new handlers
@@ -310,9 +356,10 @@ export async function POST(req: NextRequest) {
     // Write error to a log file for persistent debugging
     try {
       const fs = require('fs');
+      const { getCurrentTimestamp } = await import('../../../../lib/timeUtils');
       fs.appendFileSync(
         './ai-chat-error.log',
-        `\n[${new Date().toISOString()}] ${errorMessage}\n${errorStack}\n`
+        `\n[${getCurrentTimestamp()}] ${errorMessage}\n${errorStack}\n`
       );
     } catch (logErr) {
       console.error('Failed to write to ai-chat-error.log:', logErr);

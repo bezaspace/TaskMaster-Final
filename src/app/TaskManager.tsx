@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { Task, TaskLog } from "./types/task";
 import TaskLogs from "./components/TaskLogs";
+import { validateTimeRange, formatTaskDateTime } from "../../lib/timeUtils";
 
 const SCHOOL_BUS_YELLOW = "#FFD800";
 const JET_BLACK = "#121212";
@@ -31,7 +32,7 @@ export default function TaskManager() {
     if (input.trim() === "") return;
     
     // Basic validation: end time must be after start time if both are provided
-    if (startTime && endTime && endTime <= startTime) {
+    if (!validateTimeRange(startTime || null, endTime || null)) {
       alert('End time must be after start time');
       return;
     }
@@ -269,27 +270,7 @@ export default function TaskManager() {
             )}
             {(task.task_date || task.start_time || task.end_time) && (
               <div style={{ color: SCHOOL_BUS_YELLOW, marginTop: "0.25rem", marginLeft: "2.75rem", fontWeight: 600 }}>
-                {task.task_date && (
-                  <span>
-                    {new Date(task.task_date + 'T00:00:00').toLocaleDateString()}
-                    {(task.start_time || task.end_time) && ': '}
-                  </span>
-                )}
-                {task.start_time && task.end_time && (
-                  <span>
-                    {new Date(`2000-01-01T${task.start_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(`2000-01-01T${task.end_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                  </span>
-                )}
-                {task.start_time && !task.end_time && (
-                  <span>
-                    {new Date(`2000-01-01T${task.start_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (start only)
-                  </span>
-                )}
-                {!task.start_time && task.end_time && (
-                  <span>
-                    (end only) {new Date(`2000-01-01T${task.end_time}`).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                  </span>
-                )}
+                {formatTaskDateTime(task.task_date, task.start_time, task.end_time)}
               </div>
             )}
             

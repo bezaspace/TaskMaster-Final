@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { TaskLog } from "../types/task";
 import AddLogEntry from "./AddLogEntry";
+import { formatLogTimestamp, convertToIndianTime } from "../../../lib/timeUtils";
 
 const SCHOOL_BUS_YELLOW = "#FFD800";
 
@@ -63,8 +64,13 @@ export default function TaskLogs({ taskId, logs, onLogsUpdate }: TaskLogsProps) 
   };
 
   const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return date.toLocaleString();
+    return formatLogTimestamp(timestamp, {
+      includeDate: true,
+      includeTime: true,
+      includeSeconds: false,
+      timezone: 'Asia/Kolkata',
+      locale: 'en-IN'
+    });
   };
 
   return (

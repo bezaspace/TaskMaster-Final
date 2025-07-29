@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   try {
     const { history, systemInstruction } = await req.json();
     const typedHistory: ChatHistoryItem[] = history || [];
-    // --- Gemini function declaration for task creation ---
+    // --- Gemini function declarations for task management ---
     const createTaskFunctionDeclaration = {
       name: 'create_task',
       description: 'Creates a new task with a title, description, optional status, and optional time slot.',
@@ -47,13 +47,61 @@ export async function POST(req: NextRequest) {
       },
     };
 
+    const deleteTaskFunctionDeclaration = {
+      name: 'delete_task',
+      description: 'Deletes a task by its unique identifier.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING, description: 'The unique identifier of the task to delete.' },
+        },
+        required: ['id'],
+      },
+    };
+
+    const editTaskFunctionDeclaration = {
+      name: 'edit_task',
+      description: 'Edits an existing task. Provide the task id and any fields to update.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING, description: 'The unique identifier of the task to edit.' },
+          title: { type: Type.STRING, description: 'The new title of the task (optional).' },
+          description: { type: Type.STRING, description: 'The new description of the task (optional).' },
+          status: {
+            type: Type.STRING,
+            description: 'The new status of the task (optional).',
+            enum: ['pending', 'in_progress', 'completed'],
+          },
+          time_slot: {
+            type: Type.STRING,
+            description: 'The new time slot for the task (optional, ISO 8601 format or null).',
+          },
+        },
+        required: ['id'],
+      },
+    };
+
+    const fetchTasksFunctionDeclaration = {
+      name: 'fetch_tasks',
+      description: 'Fetches all tasks with their details, including id, title, description, status, and time_slot.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
+        required: [],
+      },
+    };
+
     // --- Function calling loop ---
     let contents = typedHistory;
     let finalText = '';
     let functionCallHandled = false;
     const config = {
-      tools: [{ functionDeclarations: [createTaskFunctionDeclaration] }],
+      tools: [{ functionDeclarations: [createTaskFunctionDeclaration, deleteTaskFunctionDeclaration, editTaskFunctionDeclaration, fetchTasksFunctionDeclaration] }],
     };
+    // Import new handlers
+    const { deleteTaskFromAI, editTaskFromAI } = await import('../../aichat/editDeleteTaskFromAI');
+    const { fetchTasksFromAI } = await import('../../aichat/fetchTasksFromAI');
     while (true) {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -72,16 +120,52 @@ export async function POST(req: NextRequest) {
             time_slot?: string | null;
           };
           const createdTask = await createTaskFromAI(args);
-          // Prepare function response part
           const functionResponsePart = {
             name: functionCall.name,
             response: { result: createdTask },
           };
-          // Add function call and response to contents for next turn
           contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
           contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
           functionCallHandled = true;
-          continue; // Let Gemini generate a final user-friendly response
+          continue;
+        } else if (functionCall.name === 'delete_task' && functionCall.args) {
+          const args = functionCall.args as { id: string };
+          const deleteResult = await deleteTaskFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: deleteResult },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'edit_task' && functionCall.args) {
+          const args = functionCall.args as {
+            id: string;
+            title?: string;
+            description?: string;
+            status?: 'pending' | 'in_progress' | 'completed';
+            time_slot?: string | null;
+          };
+          const editResult = await editTaskFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: editResult },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'fetch_tasks') {
+          const tasks = await fetchTasksFromAI();
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: tasks },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
         }
       } else {
         // No function call, just return the text

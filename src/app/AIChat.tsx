@@ -95,44 +95,37 @@ export default function AIChat() {
       </form>
       <style jsx>{`
         .ai-chat-window {
-          border: 1px solid #ccc;
-          border-radius: 8px;
-          max-width: 100%;
-          width: 400px;
-          margin: 0 auto;
+          width: 100vw;
+          height: calc(100vh - 0px);
           display: flex;
           flex-direction: column;
-          height: 500px;
           background: var(--chat-bg, #fff);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-          transition: background 0.2s;
-        }
-        @media (max-width: 500px) {
-          .ai-chat-window {
-            width: 100vw;
-            height: 100vh;
-            border-radius: 0;
-          }
+          flex: 1 1 auto;
         }
         .ai-chat-header {
           background: #f7f7f7;
-          padding: 12px;
+          padding: 16px 0 16px 0;
           border-bottom: 1px solid #eee;
           font-weight: bold;
           text-align: center;
           color: #222;
+          font-size: 1.2rem;
         }
         .ai-chat-messages {
-          flex: 1;
+          flex: 1 1 auto;
           overflow-y: auto;
-          padding: 16px;
+          padding: 24px 0 24px 0;
           background: var(--chat-bg, #fff);
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          min-height: 0;
         }
         .ai-chat-bubble {
-          margin-bottom: 12px;
-          padding: 10px 16px;
+          margin: 0 24px;
+          padding: 12px 18px;
           border-radius: 18px;
-          max-width: 80%;
+          max-width: 70vw;
           word-break: break-word;
           font-size: 1rem;
           box-shadow: 0 1px 2px rgba(0,0,0,0.03);
@@ -150,19 +143,19 @@ export default function AIChat() {
         .ai-chat-input-row {
           display: flex;
           border-top: 1px solid #eee;
-          padding: 10px;
+          padding: 16px 24px;
           background: #fafafa;
         }
         .ai-chat-input-row input {
           flex: 1;
-          padding: 8px;
+          padding: 12px;
           border-radius: 4px;
           border: 1px solid #ccc;
-          margin-right: 8px;
+          margin-right: 12px;
           font-size: 1rem;
         }
         .ai-chat-input-row button {
-          padding: 8px 16px;
+          padding: 12px 24px;
           border-radius: 4px;
           border: none;
           background: #00796b;
@@ -175,10 +168,23 @@ export default function AIChat() {
           background: #b2dfdb;
           cursor: not-allowed;
         }
+        @media (max-width: 700px) {
+          .ai-chat-window {
+            width: 100vw;
+            height: calc(100vh - 0px);
+            border-radius: 0;
+          }
+          .ai-chat-bubble {
+            max-width: 90vw;
+            margin: 0 8px;
+          }
+          .ai-chat-input-row {
+            padding: 12px 8px;
+          }
+        }
         @media (prefers-color-scheme: dark) {
           .ai-chat-window {
             background: #181c1f;
-            border-color: #222;
           }
           .ai-chat-header {
             background: #23272b;

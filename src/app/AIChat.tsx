@@ -8,7 +8,7 @@ interface Message {
 
 export default function AIChat() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +84,7 @@ export default function AIChat() {
         <input
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => setInput(e.target.value ?? "")}
           placeholder="Type your message..."
           aria-label="Type your message"
           disabled={loading}

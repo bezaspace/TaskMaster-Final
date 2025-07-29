@@ -13,8 +13,8 @@ export default function TaskManager() {
 
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [input, setInput] = useState("");
-  const [description, setDescription] = useState("");
+  const [input, setInput] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
   const [taskDate, setTaskDate] = useState<string>("");
   const [startTime, setStartTime] = useState<string>("");
   const [endTime, setEndTime] = useState<string>("");
@@ -25,7 +25,16 @@ export default function TaskManager() {
   useEffect(() => {
     fetch("/api/tasks")
       .then(res => res.json())
-      .then(data => setTasks(data));
+      .then(data => {
+        // Ensure all tasks have proper string values for form fields
+        const normalizedTasks = data.map((task: any) => ({
+          ...task,
+          task_date: task.task_date ?? "",
+          start_time: task.start_time ?? "",
+          end_time: task.end_time ?? ""
+        }));
+        setTasks(normalizedTasks);
+      });
   }, []);
 
   const addTask = async () => {
@@ -148,8 +157,8 @@ export default function TaskManager() {
         />
         <input
           type="date"
-          value={taskDate || ""}
-          onChange={e => setTaskDate(e.target.value)}
+          value={taskDate ?? ""}
+          onChange={e => setTaskDate(e.target.value ?? "")}
           placeholder="Task date"
           style={{
             background: "#222",
@@ -163,8 +172,8 @@ export default function TaskManager() {
         <div style={{ display: "flex", gap: "1rem" }}>
           <input
             type="time"
-            value={startTime || ""}
-            onChange={e => setStartTime(e.target.value)}
+            value={startTime ?? ""}
+            onChange={e => setStartTime(e.target.value ?? "")}
             placeholder="Start time"
             style={{
               background: "#222",
@@ -178,8 +187,8 @@ export default function TaskManager() {
           />
           <input
             type="time"
-            value={endTime || ""}
-            onChange={e => setEndTime(e.target.value)}
+            value={endTime ?? ""}
+            onChange={e => setEndTime(e.target.value ?? "")}
             placeholder="End time"
             style={{
               background: "#222",

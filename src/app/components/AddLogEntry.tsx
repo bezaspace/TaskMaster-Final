@@ -11,7 +11,7 @@ interface AddLogEntryProps {
 }
 
 export default function AddLogEntry({ taskId, onLogAdded, onCancel }: AddLogEntryProps) {
-  const [content, setContent] = useState("");
+  const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,7 +45,7 @@ export default function AddLogEntry({ taskId, onLogAdded, onCancel }: AddLogEntr
     <form onSubmit={handleSubmit} style={{ marginTop: "0.5rem" }}>
       <textarea
         value={content}
-        onChange={(e) => setContent(e.target.value)}
+        onChange={(e) => setContent(e.target.value ?? "")}
         placeholder="Add a log entry..."
         rows={3}
         style={{

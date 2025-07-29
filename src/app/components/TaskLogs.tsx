@@ -15,7 +15,7 @@ interface TaskLogsProps {
 export default function TaskLogs({ taskId, logs, onLogsUpdate }: TaskLogsProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingLogId, setEditingLogId] = useState<number | null>(null);
-  const [editContent, setEditContent] = useState("");
+  const [editContent, setEditContent] = useState<string>("");
 
   const handleLogAdded = (newLog: TaskLog) => {
     onLogsUpdate([newLog, ...logs]);
@@ -121,7 +121,7 @@ export default function TaskLogs({ taskId, logs, onLogsUpdate }: TaskLogsProps) 
                     <div>
                       <textarea
                         value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
+                        onChange={(e) => setEditContent(e.target.value ?? "")}
                         rows={2}
                         style={{
                           width: "100%",

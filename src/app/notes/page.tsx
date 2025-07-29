@@ -10,8 +10,8 @@ export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [newTitle, setNewTitle] = useState("");
-  const [newContent, setNewContent] = useState("");
+  const [newTitle, setNewTitle] = useState<string>("");
+  const [newContent, setNewContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   // Fetch notes from backend
@@ -151,7 +151,7 @@ export default function NotesPage() {
             type="text"
             placeholder="Note title..."
             value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
+            onChange={(e) => setNewTitle(e.target.value ?? "")}
             style={{
               width: "100%",
               background: "#222",
@@ -167,7 +167,7 @@ export default function NotesPage() {
           <textarea
             placeholder="Write your note here..."
             value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
+            onChange={(e) => setNewContent(e.target.value ?? "")}
             rows={6}
             style={{
               width: "100%",
@@ -288,7 +288,7 @@ function NoteCard({ note, isEditing, onEdit, onSave, onCancel, onDelete, loading
         <input
           type="text"
           value={editTitle}
-          onChange={(e) => setEditTitle(e.target.value)}
+          onChange={(e) => setEditTitle(e.target.value ?? "")}
           style={{
             width: "100%",
             background: "#222",
@@ -304,7 +304,7 @@ function NoteCard({ note, isEditing, onEdit, onSave, onCancel, onDelete, loading
         />
         <textarea
           value={editContent}
-          onChange={(e) => setEditContent(e.target.value)}
+          onChange={(e) => setEditContent(e.target.value ?? "")}
           rows={6}
           style={{
             width: "100%",

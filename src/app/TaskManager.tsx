@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { Task, TaskLog } from "./types/task";
 import TaskLogs from "./components/TaskLogs";
-import { validateTimeRange, formatTaskDateTime } from "../../lib/timeUtils";
+import TaskCreationModal from "./components/TaskCreationModal";
+import { formatTaskDateTime } from "../../lib/timeUtils";
 
 const SCHOOL_BUS_YELLOW = "#FFD800";
 const JET_BLACK = "#121212";
@@ -13,13 +14,9 @@ export default function TaskManager() {
 
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [input, setInput] = useState<string>("");
-  const [description, setDescription] = useState<string>("");
-  const [taskDate, setTaskDate] = useState<string>("");
-  const [startTime, setStartTime] = useState<string>("");
-  const [endTime, setEndTime] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Fetch tasks from backend
   useEffect(() => {
@@ -42,45 +39,45 @@ export default function TaskManager() {
       });
   }, []);
 
-  const addTask = async () => {
-    if (input.trim() === "") return;
-    
-    // Basic validation: end time must be after start time if both are provided
-    if (!validateTimeRange(startTime || null, endTime || null)) {
-      alert('End time must be after start time');
-      return;
-    }
-    
+  const addTask = async (taskData: {
+    title: string;
+    description: string;
+    task_date: string;
+    start_time: string;
+    end_time: string;
+  }) => {
     setLoading(true);
-    const res = await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: input,
-        description: description,
-        status: "pending",
-        task_date: taskDate || null,
-        start_time: startTime || null,
-        end_time: endTime || null
-      })
-    });
-    const newTask = await res.json();
-    // Normalize the new task fields to ensure consistency
-    const normalizedNewTask = {
-      ...newTask,
-      task_date: newTask.task_date ?? "",
-      start_time: newTask.start_time ?? "",
-      end_time: newTask.end_time ?? "",
-      text: newTask.title,
-      done: Boolean(newTask.status === "done")
-    };
-    setTasks([...tasks, normalizedNewTask]);
-    setInput("");
-    setDescription("");
-    setTaskDate("");
-    setStartTime("");
-    setEndTime("");
-    setLoading(false);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskData.title,
+          description: taskData.description,
+          status: "pending",
+          task_date: taskData.task_date || null,
+          start_time: taskData.start_time || null,
+          end_time: taskData.end_time || null
+        })
+      });
+      const newTask = await res.json();
+      // Normalize the new task fields to ensure consistency
+      const normalizedNewTask = {
+        ...newTask,
+        task_date: newTask.task_date ?? "",
+        start_time: newTask.start_time ?? "",
+        end_time: newTask.end_time ?? "",
+        text: newTask.title,
+        done: Boolean(newTask.status === "done")
+      };
+      setTasks([...tasks, normalizedNewTask]);
+      setIsModalOpen(false); // Close modal after successful creation
+    } catch (error) {
+      console.error('Failed to create task:', error);
+      alert('Failed to create task');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleTask = async (id: number) => {
@@ -165,6 +162,8 @@ export default function TaskManager() {
     ));
   };
 
+
+
   return (
     <div style={{
       background: JET_BLACK,
@@ -173,98 +172,72 @@ export default function TaskManager() {
       padding: "2rem",
       fontFamily: "Inter, sans-serif"
     }}>
-      <h1 style={{ color: SCHOOL_BUS_YELLOW, marginBottom: "2rem" }}>Task Manager</h1>
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "2rem", maxWidth: 600 }}>
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && addTask()}
-          placeholder="Add a new task..."
-          style={{
-            background: "#222",
-            border: `1px solid ${SCHOOL_BUS_YELLOW}`,
-            color: "#fff",
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            outline: "none"
-          }}
-        />
-        <input
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="Task details..."
-          style={{
-            background: "#222",
-            border: `1px solid ${SCHOOL_BUS_YELLOW}`,
-            color: "#fff",
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            outline: "none"
-          }}
-        />
-        <input
-          type="date"
-          value={taskDate}
-          onChange={e => setTaskDate(e.target.value)}
-          placeholder="Task date"
-          style={{
-            background: "#222",
-            border: `1px solid ${SCHOOL_BUS_YELLOW}`,
-            color: "#fff",
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            outline: "none"
-          }}
-        />
-        <div style={{ display: "flex", gap: "1rem" }}>
-          <input
-            type="time"
-            value={startTime}
-            onChange={e => setStartTime(e.target.value)}
-            placeholder="Start time"
-            style={{
-              background: "#222",
-              border: `1px solid ${SCHOOL_BUS_YELLOW}`,
-              color: "#fff",
-              padding: "0.75rem 1rem",
-              borderRadius: "8px",
-              outline: "none",
-              flex: 1
-            }}
-          />
-          <input
-            type="time"
-            value={endTime}
-            onChange={e => setEndTime(e.target.value)}
-            placeholder="End time"
-            style={{
-              background: "#222",
-              border: `1px solid ${SCHOOL_BUS_YELLOW}`,
-              color: "#fff",
-              padding: "0.75rem 1rem",
-              borderRadius: "8px",
-              outline: "none",
-              flex: 1
-            }}
-          />
-        </div>
+      {/* Header with Add Task Button */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: "2rem"
+      }}>
+        <h1 style={{ color: SCHOOL_BUS_YELLOW, margin: 0 }}>Task Manager</h1>
         <button
-          onClick={addTask}
+          onClick={() => setIsModalOpen(true)}
           style={{
             background: SCHOOL_BUS_YELLOW,
             color: JET_BLACK,
             border: "none",
-            borderRadius: "8px",
+            borderRadius: "12px",
             padding: "0.75rem 1.5rem",
             fontWeight: 700,
-            cursor: "pointer"
+            cursor: "pointer",
+            fontSize: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            boxShadow: "0 4px 12px rgba(255, 216, 0, 0.3)",
+            transition: "all 0.2s ease"
           }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.transform = "translateY(-2px)";
+            e.currentTarget.style.boxShadow = "0 6px 16px rgba(255, 216, 0, 0.4)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "0 4px 12px rgba(255, 216, 0, 0.3)";
+          }}
+          title="Create new task"
         >
-          Add
+          <span style={{ fontSize: "1.2rem" }}>+</span>
+          New Task
         </button>
       </div>
+
+      {/* Task Creation Modal */}
+      <TaskCreationModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onTaskCreate={addTask}
+        loading={loading}
+      />
+      {/* Tasks List */}
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {tasks.map(task => (
+        {tasks.length === 0 ? (
+          <div style={{
+            textAlign: "center",
+            padding: "4rem 2rem",
+            color: "#666",
+            background: "#181818",
+            borderRadius: "12px",
+            border: "2px dashed #333"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>📝</div>
+            <h3 style={{ color: "#888", marginBottom: "0.5rem" }}>No tasks yet</h3>
+            <p style={{ margin: 0, fontSize: "0.9rem" }}>
+              Click the "New Task" button to create your first task
+            </p>
+          </div>
+        ) : (
+          tasks.map(task => (
           <div
             key={task.id}
             style={{
@@ -356,7 +329,8 @@ export default function TaskManager() {
               />
             )}
           </div>
-        ))}
+          ))
+        )}
       </div>
 
     </div>

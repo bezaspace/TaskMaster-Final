@@ -57,10 +57,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   console.log('EditTask PUT merged:', { title, description, status, task_date, start_time, end_time });
 
   // Defensive: required fields must not be null, undefined, or empty string
-  if (!title || !description || !status || title === '' || description === '' || status === '') {
+  if (!title || !status || title === '' || status === '') {
     console.error('Edit task failed: missing required fields', { title, description, status, task_date, start_time, end_time });
     return new Response(
-      JSON.stringify({ error: 'Missing required fields: title, description, and status are required.' }),
+      JSON.stringify({ error: 'Missing required fields: title and status are required.' }),
       { status: 400 }
     );
   }

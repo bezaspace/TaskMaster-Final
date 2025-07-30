@@ -121,7 +121,7 @@ export default function TaskLogs({ taskId, logs, onLogsUpdate }: TaskLogsProps) 
                     <div>
                       <textarea
                         value={editContent}
-                        onChange={(e) => setEditContent(e.target.value ?? "")}
+                        onChange={(e) => setEditContent(e.target.value)}
                         rows={2}
                         style={{
                           width: "100%",

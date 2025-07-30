@@ -31,9 +31,14 @@ export default function TaskManager() {
           ...task,
           task_date: task.task_date ?? "",
           start_time: task.start_time ?? "",
-          end_time: task.end_time ?? ""
+          end_time: task.end_time ?? "",
+          done: Boolean(task.status === "done" || task.done)
         }));
         setTasks(normalizedTasks);
+      })
+      .catch(err => {
+        console.error('Failed to fetch tasks:', err);
+        setTasks([]);
       });
   }, []);
 
@@ -60,7 +65,16 @@ export default function TaskManager() {
       })
     });
     const newTask = await res.json();
-    setTasks([...tasks, { ...newTask, text: newTask.title, done: newTask.status === "done" }]);
+    // Normalize the new task fields to ensure consistency
+    const normalizedNewTask = {
+      ...newTask,
+      task_date: newTask.task_date ?? "",
+      start_time: newTask.start_time ?? "",
+      end_time: newTask.end_time ?? "",
+      text: newTask.title,
+      done: Boolean(newTask.status === "done")
+    };
+    setTasks([...tasks, normalizedNewTask]);
     setInput("");
     setDescription("");
     setTaskDate("");
@@ -72,24 +86,50 @@ export default function TaskManager() {
   const toggleTask = async (id: number) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
-    const updatedStatus = task.status === "done" ? "pending" : "done";
+    const updatedStatus = task.done ? "pending" : "done";
     setLoading(true);
-    await fetch(`/api/tasks/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: task.title,
-        description: task.description,
-        status: updatedStatus,
-        task_date: task.task_date || null,
-        start_time: task.start_time || null,
-        end_time: task.end_time || null
-      })
-    });
-    setTasks(tasks.map(t =>
-      t.id === id ? { ...t, status: updatedStatus, done: updatedStatus === "done" } : t
-    ));
-    setLoading(false);
+    
+    const requestBody = {
+      title: task.title,
+      description: task.description || "",
+      status: updatedStatus,
+      task_date: task.task_date || null,
+      start_time: task.start_time || null,
+      end_time: task.end_time || null
+    };
+    
+    console.log('Sending update request:', requestBody);
+    
+    try {
+      const response = await fetch(`/api/tasks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to update task:', error);
+        alert('Failed to update task: ' + (error.error || 'Unknown error'));
+        return;
+      }
+      
+      setTasks(tasks.map(t =>
+        t.id === id ? { 
+          ...t, 
+          status: updatedStatus, 
+          done: Boolean(updatedStatus === "done"),
+          task_date: t.task_date ?? "",
+          start_time: t.start_time ?? "",
+          end_time: t.end_time ?? ""
+        } : t
+      ));
+    } catch (error) {
+      console.error('Error updating task:', error);
+      alert('Failed to update task');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Delete task handler
@@ -114,7 +154,14 @@ export default function TaskManager() {
   // Update task logs
   const updateTaskLogs = (taskId: number, logs: TaskLog[]) => {
     setTasks(tasks.map(task => 
-      task.id === taskId ? { ...task, logs } : task
+      task.id === taskId ? { 
+        ...task, 
+        logs,
+        task_date: task.task_date ?? "",
+        start_time: task.start_time ?? "",
+        end_time: task.end_time ?? "",
+        done: Boolean(task.status === "done" || task.done)
+      } : task
     ));
   };
 
@@ -157,8 +204,8 @@ export default function TaskManager() {
         />
         <input
           type="date"
-          value={taskDate ?? ""}
-          onChange={e => setTaskDate(e.target.value ?? "")}
+          value={taskDate}
+          onChange={e => setTaskDate(e.target.value)}
           placeholder="Task date"
           style={{
             background: "#222",
@@ -172,8 +219,8 @@ export default function TaskManager() {
         <div style={{ display: "flex", gap: "1rem" }}>
           <input
             type="time"
-            value={startTime ?? ""}
-            onChange={e => setStartTime(e.target.value ?? "")}
+            value={startTime}
+            onChange={e => setStartTime(e.target.value)}
             placeholder="Start time"
             style={{
               background: "#222",
@@ -187,8 +234,8 @@ export default function TaskManager() {
           />
           <input
             type="time"
-            value={endTime ?? ""}
-            onChange={e => setEndTime(e.target.value ?? "")}
+            value={endTime}
+            onChange={e => setEndTime(e.target.value)}
             placeholder="End time"
             style={{
               background: "#222",
@@ -226,13 +273,13 @@ export default function TaskManager() {
               background: "#181818",
               borderRadius: "8px",
               padding: "1rem 1.5rem",
-              boxShadow: (task.status === "done" || task.done) ? `0 0 0 2px ${SCHOOL_BUS_YELLOW}` : "none"
+              boxShadow: task.done ? `0 0 0 2px ${SCHOOL_BUS_YELLOW}` : "none"
             }}
           >
             <div style={{ display: "flex", alignItems: "center" }}>
               <input
                 type="checkbox"
-                checked={task.status === "done" || task.done}
+                checked={task.done}
                 onChange={() => toggleTask(task.id)}
                 style={{
                   accentColor: SCHOOL_BUS_YELLOW,
@@ -243,17 +290,17 @@ export default function TaskManager() {
               />
               <span style={{
                 flex: 1,
-                textDecoration: (task.status === "done" || task.done) ? "line-through" : "none",
-                color: (task.status === "done" || task.done) ? SCHOOL_BUS_YELLOW : "#fff",
+                textDecoration: task.done ? "line-through" : "none",
+                color: task.done ? SCHOOL_BUS_YELLOW : "#fff",
                 fontWeight: 500,
                 fontSize: "1.1rem"
               }}>{task.title}</span>
               <span style={{
-                color: (task.status === "done" || task.done) ? SCHOOL_BUS_YELLOW : "#888",
+                color: task.done ? SCHOOL_BUS_YELLOW : "#888",
                 fontWeight: 700,
                 marginLeft: "1rem"
               }}>
-                {(task.status === "done" || task.done) ? "Done" : "Pending"}
+                {task.done ? "Done" : "Pending"}
               </span>
               <button
                 onClick={() => deleteTask(task.id)}

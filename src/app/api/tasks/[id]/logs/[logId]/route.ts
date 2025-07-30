@@ -1,4 +1,4 @@
-import { getDb, getCurrentDbTimestamp } from '../../../../../../../lib/db';
+import { getDb, getCurrentDbTimestamp, handleSupabaseError } from '../../../../../../../lib/db';
 import { logActivity } from '../../../../../../../lib/activityLogger';
 
 // PUT /api/tasks/[id]/logs/[logId] - Update a log entry
@@ -8,7 +8,7 @@ export async function PUT(
 ) {
   try {
     const { id, logId } = await params;
-    const db = await getDb();
+    const supabase = getDb();
     const data = await request.json();
     const { content } = data;
     
@@ -16,29 +16,45 @@ export async function PUT(
       return new Response(JSON.stringify({ error: 'Content is required' }), { status: 400 });
     }
     
-    // Verify task and log exist
-    const task = await db.get('SELECT title FROM tasks WHERE id = ?', id);
-    if (!task) {
+    // Verify task exists
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('title')
+      .eq('id', id)
+      .single();
+      
+    if (taskError || !task) {
       return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
     }
     
-    const existingLog = await db.get('SELECT * FROM task_logs WHERE id = ? AND task_id = ?', logId, id);
-    if (!existingLog) {
+    // Verify log exists
+    const { data: existingLog, error: logError } = await supabase
+      .from('task_logs')
+      .select('*')
+      .eq('id', logId)
+      .eq('task_id', id)
+      .single();
+      
+    if (logError || !existingLog) {
       return new Response(JSON.stringify({ error: 'Log entry not found' }), { status: 404 });
     }
     
     // Update log entry
     const currentTimestamp = getCurrentDbTimestamp();
-    await db.run(
-      'UPDATE task_logs SET content = ?, created_at = ? WHERE id = ? AND task_id = ?',
-      content.trim(),
-      currentTimestamp,
-      logId,
-      id
-    );
+    const { data: updatedLog, error: updateError } = await supabase
+      .from('task_logs')
+      .update({
+        content: content.trim(),
+        created_at: currentTimestamp
+      })
+      .eq('id', logId)
+      .eq('task_id', id)
+      .select()
+      .single();
     
-    // Get updated log entry
-    const updatedLog = await db.get('SELECT * FROM task_logs WHERE id = ?', logId);
+    if (updateError) {
+      handleSupabaseError(updateError, 'log update');
+    }
     
     // Log the activity
     await logActivity(`Updated log in task "${task.title}": "${content.trim().substring(0, 50)}${content.trim().length > 50 ? '...' : ''}"`);
@@ -60,21 +76,41 @@ export async function DELETE(
 ) {
   try {
     const { id, logId } = await params;
-    const db = await getDb();
+    const supabase = getDb();
     
-    // Verify task and log exist, and get details for logging
-    const task = await db.get('SELECT title FROM tasks WHERE id = ?', id);
-    if (!task) {
+    // Verify task exists
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('title')
+      .eq('id', id)
+      .single();
+      
+    if (taskError || !task) {
       return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
     }
     
-    const existingLog = await db.get('SELECT * FROM task_logs WHERE id = ? AND task_id = ?', logId, id);
-    if (!existingLog) {
+    // Verify log exists and get details for logging
+    const { data: existingLog, error: logError } = await supabase
+      .from('task_logs')
+      .select('*')
+      .eq('id', logId)
+      .eq('task_id', id)
+      .single();
+      
+    if (logError || !existingLog) {
       return new Response(JSON.stringify({ error: 'Log entry not found' }), { status: 404 });
     }
     
     // Delete log entry
-    await db.run('DELETE FROM task_logs WHERE id = ? AND task_id = ?', logId, id);
+    const { error: deleteError } = await supabase
+      .from('task_logs')
+      .delete()
+      .eq('id', logId)
+      .eq('task_id', id);
+    
+    if (deleteError) {
+      handleSupabaseError(deleteError, 'log deletion');
+    }
     
     // Log the activity
     await logActivity(`Deleted log from task "${task.title}": "${existingLog.content.substring(0, 50)}${existingLog.content.length > 50 ? '...' : ''}"`);

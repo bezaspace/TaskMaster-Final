@@ -1,12 +1,19 @@
-import { getDb, getCurrentDbTimestamp } from '../../../../lib/db';
+import { getDb, getCurrentDbTimestamp, handleSupabaseError } from '../../../../lib/db';
 import { logActivity } from '../../../../lib/activityLogger';
 
 export async function GET() {
   try {
-    const db = await getDb();
-    const notes = await db.all('SELECT * FROM notes ORDER BY updated_at DESC');
+    const supabase = getDb();
+    const { data: notes, error } = await supabase
+      .from('notes')
+      .select('*')
+      .order('updated_at', { ascending: false });
     
-    return new Response(JSON.stringify(notes), {
+    if (error) {
+      handleSupabaseError(error, 'notes fetch');
+    }
+    
+    return new Response(JSON.stringify(notes || []), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     });
@@ -18,7 +25,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const db = await getDb();
+    const supabase = getDb();
     const data = await request.json();
     const { title, content } = data;
     
@@ -27,15 +34,20 @@ export async function POST(request: Request) {
     }
     
     const currentTimestamp = getCurrentDbTimestamp();
-    const result = await db.run(
-      'INSERT INTO notes (title, content, created_at, updated_at) VALUES (?, ?, ?, ?)',
-      title,
-      content,
-      currentTimestamp,
-      currentTimestamp
-    );
+    const { data: note, error } = await supabase
+      .from('notes')
+      .insert({
+        title,
+        content,
+        created_at: currentTimestamp,
+        updated_at: currentTimestamp
+      })
+      .select()
+      .single();
     
-    const note = await db.get('SELECT * FROM notes WHERE id = ?', result.lastID);
+    if (error) {
+      handleSupabaseError(error, 'note creation');
+    }
     
     // Log the activity
     await logActivity(`Created note: "${title}"`);

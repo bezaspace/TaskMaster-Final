@@ -1,23 +1,34 @@
 
-import { getDb, getCurrentDbTimestamp } from '../../../../../lib/db';
+import { getDb, getCurrentDbTimestamp, handleSupabaseError } from '../../../../../lib/db';
 import { logActivity } from '../../../../../lib/activityLogger';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = await getDb();
-  const task = await db.get('SELECT * FROM tasks WHERE id = ?', id);
-  if (!task) {
+  const supabase = getDb();
+  
+  const { data: task, error: taskError } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('id', id)
+    .single();
+    
+  if (taskError || !task) {
     return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
   }
   
   // Get logs for this task
-  const logs = await db.all(
-    'SELECT * FROM task_logs WHERE task_id = ? ORDER BY created_at DESC',
-    id
-  );
+  const { data: logs, error: logsError } = await supabase
+    .from('task_logs')
+    .select('*')
+    .eq('task_id', id)
+    .order('created_at', { ascending: false });
+  
+  if (logsError) {
+    console.error('Error fetching logs:', logsError);
+  }
   
   // Include logs in the task response
-  const taskWithLogs = { ...task, logs };
+  const taskWithLogs = { ...task, logs: logs || [] };
   
   return new Response(JSON.stringify(taskWithLogs), {
     headers: { 'Content-Type': 'application/json' },
@@ -28,19 +39,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = await getDb();
+  const supabase = getDb();
   const data = await request.json();
+  
   // Fetch existing task
-  const existing = await db.get('SELECT * FROM tasks WHERE id = ?', id);
-  if (!existing) {
+  const { data: existing, error: fetchError } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('id', id)
+    .single();
+    
+  if (fetchError || !existing) {
     return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
   }
+  
   // Merge fields: use provided value or fallback to existing
   function pickField<T>(field: T | undefined | null, fallback: T): T {
     if (field === undefined || field === null) return fallback;
     if (typeof field === 'string' && field.trim() === '') return fallback;
     return field;
   }
+  
   const title = pickField(data.title, existing.title);
   const description = pickField(data.description, existing.description);
   const status = pickField(data.status, existing.status);
@@ -65,20 +84,27 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       { status: 400 }
     );
   }
+  
   // Log merged values for debugging
   console.log('Updating task', { id, title, description, status, task_date, start_time, end_time });
   const currentTimestamp = getCurrentDbTimestamp();
-  await db.run(
-    'UPDATE tasks SET title = ?, description = ?, status = ?, task_date = ?, start_time = ?, end_time = ?, updated_at = ? WHERE id = ?',
-    title,
-    description,
-    status,
-    task_date || null,
-    start_time || null,
-    end_time || null,
-    currentTimestamp,
-    id
-  );
+  
+  const { error: updateError } = await supabase
+    .from('tasks')
+    .update({
+      title,
+      description,
+      status,
+      task_date: task_date || null,
+      start_time: start_time || null,
+      end_time: end_time || null,
+      updated_at: currentTimestamp
+    })
+    .eq('id', id);
+
+  if (updateError) {
+    handleSupabaseError(updateError, 'task update');
+  }
 
   // Log the activity
   const statusChanged = existing.status !== status;
@@ -94,50 +120,80 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = await getDb();
+  const supabase = getDb();
   
   try {
     // First, get the task data before deletion
-    const task = await db.get('SELECT * FROM tasks WHERE id = ?', id);
-    if (!task) {
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('id', id)
+      .single();
+      
+    if (taskError || !task) {
       return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
     }
 
     // Get all logs for this task
-    const logs = await db.all('SELECT * FROM task_logs WHERE task_id = ?', id);
+    const { data: logs, error: logsError } = await supabase
+      .from('task_logs')
+      .select('*')
+      .eq('task_id', id);
+
+    if (logsError) {
+      console.error('Error fetching logs for deletion:', logsError);
+    }
 
     // Insert task into deleted_tasks table
     const currentTimestamp = getCurrentDbTimestamp();
-    const deletedTaskResult = await db.run(`
-      INSERT INTO deleted_tasks (
-        original_task_id, title, description, status, task_date, 
-        start_time, end_time, created_at, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      task.id,
-      task.title,
-      task.description,
-      task.status,
-      task.task_date,
-      task.start_time,
-      task.end_time,
-      task.created_at,
-      task.updated_at,
-      currentTimestamp
-    ]);
+    const { data: deletedTask, error: deletedTaskError } = await supabase
+      .from('deleted_tasks')
+      .insert({
+        original_task_id: task.id,
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        task_date: task.task_date,
+        start_time: task.start_time,
+        end_time: task.end_time,
+        created_at: task.created_at,
+        updated_at: task.updated_at,
+        deleted_at: currentTimestamp
+      })
+      .select()
+      .single();
+
+    if (deletedTaskError) {
+      handleSupabaseError(deletedTaskError, 'deleted task creation');
+    }
 
     // Insert logs into deleted_task_logs table
-    const deletedTaskId = deletedTaskResult.lastID;
-    for (const log of logs) {
-      await db.run(`
-        INSERT INTO deleted_task_logs (
-          deleted_task_id, original_log_id, content, created_at
-        ) VALUES (?, ?, ?, ?)
-      `, [deletedTaskId, log.id, log.content, log.created_at]);
+    if (logs && logs.length > 0 && deletedTask) {
+      const deletedLogs = logs.map(log => ({
+        deleted_task_id: deletedTask.id,
+        original_log_id: log.id,
+        content: log.content,
+        created_at: log.created_at
+      }));
+
+      const { error: deletedLogsError } = await supabase
+        .from('deleted_task_logs')
+        .insert(deletedLogs);
+
+      if (deletedLogsError) {
+        console.error('Error inserting deleted logs:', deletedLogsError);
+      }
     }
 
     // Now delete the original task (logs will be cascade deleted)
-    await db.run('DELETE FROM tasks WHERE id = ?', id);
+    const { error: deleteError } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      handleSupabaseError(deleteError, 'task deletion');
+    }
     
     // Log the activity
     await logActivity(`Deleted task: "${task.title}"`);

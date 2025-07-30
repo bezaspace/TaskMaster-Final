@@ -21,8 +21,23 @@ export default function TaskManager() {
   // Fetch tasks from backend
   useEffect(() => {
     fetch("/api/tasks")
-      .then(res => res.json())
-      .then(data => {
+      .then(async res => {
+        const data = await res.json();
+        console.log('API Response:', data); // Debug log
+        
+        if (!res.ok) {
+          console.error('API Error:', data);
+          setTasks([]);
+          return;
+        }
+        
+        // Check if data is an array, if not, handle error
+        if (!Array.isArray(data)) {
+          console.error('API returned non-array data:', data);
+          setTasks([]);
+          return;
+        }
+        
         // Ensure all tasks have proper string values for form fields
         const normalizedTasks = data.map((task: any) => ({
           ...task,

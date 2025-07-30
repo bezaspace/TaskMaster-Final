@@ -1,18 +1,23 @@
-import { getDb, getCurrentDbTimestamp } from './db';
+import { getDb, getCurrentDbTimestamp, handleSupabaseError } from './db';
 
 /**
  * Simple activity logger that records all user actions with timestamps
  */
 export async function logActivity(description: string): Promise<void> {
   try {
-    const db = await getDb();
+    const supabase = getDb();
     const timestamp = getCurrentDbTimestamp();
     
-    await db.run(
-      'INSERT INTO activity_log (timestamp, description) VALUES (?, ?)',
-      timestamp,
-      description
-    );
+    const { error } = await supabase
+      .from('activity_log')
+      .insert({
+        timestamp,
+        description
+      });
+
+    if (error) {
+      handleSupabaseError(error, 'activity log insert');
+    }
   } catch (error) {
     console.error('Failed to log activity:', error);
     // Don't throw error to avoid breaking the main functionality
@@ -28,33 +33,29 @@ export async function getActivityLogs(
   limit: number = 100
 ): Promise<Array<{ id: number; timestamp: string; description: string; created_at: string }>> {
   try {
-    const db = await getDb();
+    const supabase = getDb();
     
-    let query = 'SELECT * FROM activity_log';
-    const params: string[] = [];
+    let query = supabase
+      .from('activity_log')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(limit);
     
-    if (startDate || endDate) {
-      query += ' WHERE';
-      const conditions: string[] = [];
-      
-      if (startDate) {
-        conditions.push(' timestamp >= ?');
-        params.push(startDate + ' 00:00:00');
-      }
-      
-      if (endDate) {
-        conditions.push(' timestamp <= ?');
-        params.push(endDate + ' 23:59:59');
-      }
-      
-      query += conditions.join(' AND');
+    if (startDate) {
+      query = query.gte('timestamp', startDate + 'T00:00:00.000Z');
     }
     
-    query += ' ORDER BY timestamp DESC LIMIT ?';
-    params.push(limit.toString());
+    if (endDate) {
+      query = query.lte('timestamp', endDate + 'T23:59:59.999Z');
+    }
     
-    const logs = await db.all(query, ...params);
-    return logs;
+    const { data: logs, error } = await query;
+    
+    if (error) {
+      handleSupabaseError(error, 'activity logs fetch');
+    }
+    
+    return logs || [];
   } catch (error) {
     console.error('Failed to get activity logs:', error);
     return [];

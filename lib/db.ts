@@ -1,22 +1,26 @@
-import sqlite3 from 'sqlite3';
-import { open, Database } from 'sqlite';
+import { supabase } from './supabase';
 import { getDatabaseTimestamp } from './timeUtils';
 
-let db: Database | null = null;
-
-export async function getDb(): Promise<Database> {
-  if (!db) {
-    db = await open({
-      filename: './taskmaster.db',
-      driver: sqlite3.Database,
-    });
-  }
-  return db;
+/**
+ * Get Supabase client instance
+ * This replaces the old SQLite getDb() function
+ */
+export function getDb() {
+  return supabase;
 }
 
 /**
  * Helper function to get current timestamp for database operations
+ * Now returns PostgreSQL-compatible timestamp
  */
 export function getCurrentDbTimestamp(): string {
   return getDatabaseTimestamp();
+}
+
+/**
+ * Helper function to handle Supabase query errors
+ */
+export function handleSupabaseError(error: any, operation: string) {
+  console.error(`Supabase ${operation} error:`, error);
+  throw new Error(`Database ${operation} failed: ${error.message}`);
 }

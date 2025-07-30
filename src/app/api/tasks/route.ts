@@ -1,29 +1,39 @@
 
-import { getDb, getCurrentDbTimestamp } from '../../../../lib/db';
+import { getDb, getCurrentDbTimestamp, handleSupabaseError } from '../../../../lib/db';
 import { logActivity } from '../../../../lib/activityLogger';
-
-
-
 
 export async function GET() {
   try {
-    const db = await getDb();
+    const supabase = getDb();
+    
     // Fetch tasks ordered by execution time (scheduled tasks first, then unscheduled)
-    const tasks = await db.all(`SELECT * FROM tasks ORDER BY 
-      CASE WHEN task_date IS NULL THEN 1 ELSE 0 END,
-      task_date ASC,
-      CASE WHEN start_time IS NULL THEN 1 ELSE 0 END, 
-      start_time ASC,
-      created_at ASC`);
+    const { data: tasks, error: tasksError } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('task_date', { ascending: true, nullsFirst: false })
+      .order('start_time', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
+
+    if (tasksError) {
+      console.error('Supabase tasks fetch error:', tasksError);
+      return new Response(JSON.stringify({ error: 'Failed to fetch tasks', details: tasksError.message }), { status: 500 });
+    }
 
     // Fetch logs for each task
     const tasksWithLogs = await Promise.all(
-      tasks.map(async (task) => {
-        const logs = await db.all(
-          'SELECT * FROM task_logs WHERE task_id = ? ORDER BY created_at DESC',
-          task.id
-        );
-        return { ...task, logs };
+      (tasks || []).map(async (task: any) => {
+        const { data: logs, error: logsError } = await supabase
+          .from('task_logs')
+          .select('*')
+          .eq('task_id', task.id)
+          .order('created_at', { ascending: false });
+
+        if (logsError) {
+          console.error('Error fetching logs for task', task.id, logsError);
+          return { ...task, logs: [] };
+        }
+
+        return { ...task, logs: logs || [] };
       })
     );
 
@@ -41,7 +51,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const db = await getDb();
+    const supabase = getDb();
     const data = await request.json();
     const { title, description, status, task_date, start_time, end_time } = data;
 
@@ -51,18 +61,24 @@ export async function POST(request: Request) {
     }
 
     const currentTimestamp = getCurrentDbTimestamp();
-    const result = await db.run(
-      'INSERT INTO tasks (title, description, status, task_date, start_time, end_time, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      title,
-      description,
-      status || 'pending',
-      task_date || null,
-      start_time || null,
-      end_time || null,
-      currentTimestamp,
-      currentTimestamp
-    );
-    const task = await db.get('SELECT * FROM tasks WHERE id = ?', result.lastID);
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .insert({
+        title,
+        description,
+        status: status || 'pending',
+        task_date: task_date || null,
+        start_time: start_time || null,
+        end_time: end_time || null,
+        created_at: currentTimestamp,
+        updated_at: currentTimestamp
+      })
+      .select()
+      .single();
+
+    if (error) {
+      handleSupabaseError(error, 'task creation');
+    }
     
     // Log the activity
     await logActivity(`Created task: "${title}"`);

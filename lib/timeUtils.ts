@@ -81,15 +81,22 @@ export function formatTaskDate(dateString: string | null, locale?: string): stri
 
 /**
  * Formats a task time for display
- * @param timeString - Time in HH:MM format
+ * @param timeString - Time in HH:MM or HH:MM:SS format
  * @param use24Hour - Whether to use 24-hour format (default: false)
  */
 export function formatTaskTime(timeString: string | null, use24Hour: boolean = false): string {
   if (!timeString) return '';
 
   try {
+    // Handle both HH:MM and HH:MM:SS formats
+    let timeForParsing = timeString;
+    if (timeString.split(':').length === 2) {
+      // HH:MM format - add seconds
+      timeForParsing = timeString + ':00';
+    }
+    
     // Create a date with the time (using arbitrary date)
-    const date = new Date(`2000-01-01T${timeString}:00`);
+    const date = new Date(`2000-01-01T${timeForParsing}`);
     return date.toLocaleTimeString(TIME_CONFIG.dateFormat, {
       hour: '2-digit',
       minute: '2-digit',
@@ -259,8 +266,19 @@ export function validateTimeRange(startTime: string | null, endTime: string | nu
   if (!startTime || !endTime) return true; // Allow partial times
 
   try {
-    const start = new Date(`2000-01-01T${startTime}:00`);
-    const end = new Date(`2000-01-01T${endTime}:00`);
+    // Handle both HH:MM and HH:MM:SS formats
+    let startTimeForParsing = startTime;
+    let endTimeForParsing = endTime;
+    
+    if (startTime.split(':').length === 2) {
+      startTimeForParsing = startTime + ':00';
+    }
+    if (endTime.split(':').length === 2) {
+      endTimeForParsing = endTime + ':00';
+    }
+    
+    const start = new Date(`2000-01-01T${startTimeForParsing}`);
+    const end = new Date(`2000-01-01T${endTimeForParsing}`);
     return end > start;
   } catch {
     return false;
@@ -294,13 +312,13 @@ export function getRelativeTime(timestamp: string): string {
 }
 
 /**
- * Database-specific timestamp for SQLite
- * Returns timestamp in format that SQLite can understand
+ * Database-specific timestamp for PostgreSQL/Supabase
+ * Returns timestamp in ISO format that PostgreSQL can understand
  * Always stores in UTC for consistency
  */
 export function getDatabaseTimestamp(): string {
-  // SQLite prefers this format: YYYY-MM-DD HH:MM:SS
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+  // PostgreSQL prefers ISO format: 2025-07-30T15:55:42.576Z
+  return new Date().toISOString();
 }
 
 /**

@@ -1,25 +1,35 @@
-import { getDb, getCurrentDbTimestamp } from '../../../../../../lib/db';
+import { getDb, getCurrentDbTimestamp, handleSupabaseError } from '../../../../../../lib/db';
 import { logActivity } from '../../../../../../lib/activityLogger';
 
 // GET /api/tasks/[id]/logs - Get all logs for a task
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = await getDb();
+    const supabase = getDb();
     
     // Verify task exists
-    const task = await db.get('SELECT id FROM tasks WHERE id = ?', id);
-    if (!task) {
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('id', id)
+      .single();
+      
+    if (taskError || !task) {
       return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
     }
     
     // Get logs ordered by creation time (newest first)
-    const logs = await db.all(
-      'SELECT * FROM task_logs WHERE task_id = ? ORDER BY created_at DESC',
-      id
-    );
+    const { data: logs, error: logsError } = await supabase
+      .from('task_logs')
+      .select('*')
+      .eq('task_id', id)
+      .order('created_at', { ascending: false });
     
-    return new Response(JSON.stringify(logs), {
+    if (logsError) {
+      handleSupabaseError(logsError, 'logs fetch');
+    }
+    
+    return new Response(JSON.stringify(logs || []), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     });
@@ -33,7 +43,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = await getDb();
+    const supabase = getDb();
     const data = await request.json();
     const { content } = data;
     
@@ -42,22 +52,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     
     // Verify task exists and get title for logging
-    const task = await db.get('SELECT id, title FROM tasks WHERE id = ?', id);
-    if (!task) {
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .select('id, title')
+      .eq('id', id)
+      .single();
+      
+    if (taskError || !task) {
       return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
     }
     
     // Create log entry
     const currentTimestamp = getCurrentDbTimestamp();
-    const result = await db.run(
-      'INSERT INTO task_logs (task_id, content, created_at) VALUES (?, ?, ?)',
-      id,
-      content.trim(),
-      currentTimestamp
-    );
+    const { data: log, error: logError } = await supabase
+      .from('task_logs')
+      .insert({
+        task_id: parseInt(id),
+        content: content.trim(),
+        created_at: currentTimestamp
+      })
+      .select()
+      .single();
     
-    // Return the created log entry
-    const log = await db.get('SELECT * FROM task_logs WHERE id = ?', result.lastID);
+    if (logError) {
+      handleSupabaseError(logError, 'log creation');
+    }
     
     // Log the activity
     await logActivity(`Added log to task "${task.title}": "${content.trim().substring(0, 50)}${content.trim().length > 50 ? '...' : ''}"`);

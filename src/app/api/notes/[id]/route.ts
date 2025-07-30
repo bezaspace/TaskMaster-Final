@@ -1,13 +1,17 @@
-import { getDb, getCurrentDbTimestamp } from '../../../../../lib/db';
+import { getDb, getCurrentDbTimestamp, handleSupabaseError } from '../../../../../lib/db';
 import { logActivity } from '../../../../../lib/activityLogger';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = await getDb();
-    const note = await db.get('SELECT * FROM notes WHERE id = ?', id);
+    const supabase = getDb();
+    const { data: note, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('id', id)
+      .single();
     
-    if (!note) {
+    if (error || !note) {
       return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
     }
     
@@ -24,7 +28,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = await getDb();
+    const supabase = getDb();
     const data = await request.json();
     const { title, content } = data;
     
@@ -33,19 +37,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
     
     const currentTimestamp = getCurrentDbTimestamp();
-    const result = await db.run(
-      'UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?',
-      title,
-      content,
-      currentTimestamp,
-      id
-    );
+    const { data: note, error } = await supabase
+      .from('notes')
+      .update({
+        title,
+        content,
+        updated_at: currentTimestamp
+      })
+      .eq('id', id)
+      .select()
+      .single();
     
-    if (result.changes === 0) {
-      return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
+      }
+      handleSupabaseError(error, 'note update');
     }
-    
-    const note = await db.get('SELECT * FROM notes WHERE id = ?', id);
     
     // Log the activity
     await logActivity(`Updated note: "${title}"`);
@@ -63,18 +71,26 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = await getDb();
+    const supabase = getDb();
     
     // Get note title before deletion for logging
-    const note = await db.get('SELECT title FROM notes WHERE id = ?', id);
-    if (!note) {
+    const { data: note, error: fetchError } = await supabase
+      .from('notes')
+      .select('title')
+      .eq('id', id)
+      .single();
+      
+    if (fetchError || !note) {
       return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
     }
     
-    const result = await db.run('DELETE FROM notes WHERE id = ?', id);
+    const { error: deleteError } = await supabase
+      .from('notes')
+      .delete()
+      .eq('id', id);
     
-    if (result.changes === 0) {
-      return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
+    if (deleteError) {
+      handleSupabaseError(deleteError, 'note deletion');
     }
     
     // Log the activity

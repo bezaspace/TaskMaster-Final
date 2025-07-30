@@ -1,27 +1,35 @@
-import { getDb } from '../../../../lib/db';
+import { getDb, handleSupabaseError } from '../../../../lib/db';
 
 export async function GET() {
   try {
-    const db = await getDb();
+    const supabase = getDb();
     
     // Get all deleted tasks ordered by deletion date (newest first)
-    const deletedTasks = await db.all(`
-      SELECT * FROM deleted_tasks 
-      ORDER BY deleted_at DESC
-    `);
+    const { data: deletedTasks, error: tasksError } = await supabase
+      .from('deleted_tasks')
+      .select('*')
+      .order('deleted_at', { ascending: false });
+
+    if (tasksError) {
+      handleSupabaseError(tasksError, 'deleted tasks fetch');
+    }
 
     // Get logs for each deleted task
     const tasksWithLogs = await Promise.all(
-      deletedTasks.map(async (task) => {
-        const logs = await db.all(`
-          SELECT * FROM deleted_task_logs 
-          WHERE deleted_task_id = ? 
-          ORDER BY created_at DESC
-        `, task.id);
+      (deletedTasks || []).map(async (task: any) => {
+        const { data: logs, error: logsError } = await supabase
+          .from('deleted_task_logs')
+          .select('*')
+          .eq('deleted_task_id', task.id)
+          .order('created_at', { ascending: false });
+        
+        if (logsError) {
+          console.error('Error fetching logs for deleted task', task.id, logsError);
+        }
         
         return {
           ...task,
-          logs
+          logs: logs || []
         };
       })
     );

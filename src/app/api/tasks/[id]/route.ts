@@ -84,6 +84,53 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = await getDb();
-  await db.run('DELETE FROM tasks WHERE id = ?', id);
-  return new Response(JSON.stringify({ success: true }), { status: 200 });
+  
+  try {
+    // First, get the task data before deletion
+    const task = await db.get('SELECT * FROM tasks WHERE id = ?', id);
+    if (!task) {
+      return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
+    }
+
+    // Get all logs for this task
+    const logs = await db.all('SELECT * FROM task_logs WHERE task_id = ?', id);
+
+    // Insert task into deleted_tasks table
+    const currentTimestamp = getCurrentDbTimestamp();
+    const deletedTaskResult = await db.run(`
+      INSERT INTO deleted_tasks (
+        original_task_id, title, description, status, task_date, 
+        start_time, end_time, created_at, updated_at, deleted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      task.id,
+      task.title,
+      task.description,
+      task.status,
+      task.task_date,
+      task.start_time,
+      task.end_time,
+      task.created_at,
+      task.updated_at,
+      currentTimestamp
+    ]);
+
+    // Insert logs into deleted_task_logs table
+    const deletedTaskId = deletedTaskResult.lastID;
+    for (const log of logs) {
+      await db.run(`
+        INSERT INTO deleted_task_logs (
+          deleted_task_id, original_log_id, content, created_at
+        ) VALUES (?, ?, ?, ?)
+      `, [deletedTaskId, log.id, log.content, log.created_at]);
+    }
+
+    // Now delete the original task (logs will be cascade deleted)
+    await db.run('DELETE FROM tasks WHERE id = ?', id);
+    
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    return new Response(JSON.stringify({ error: 'Failed to delete task' }), { status: 500 });
+  }
 }

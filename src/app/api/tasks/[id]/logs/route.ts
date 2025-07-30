@@ -1,4 +1,5 @@
 import { getDb, getCurrentDbTimestamp } from '../../../../../../lib/db';
+import { logActivity } from '../../../../../../lib/activityLogger';
 
 // GET /api/tasks/[id]/logs - Get all logs for a task
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -40,8 +41,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return new Response(JSON.stringify({ error: 'Content is required' }), { status: 400 });
     }
     
-    // Verify task exists
-    const task = await db.get('SELECT id FROM tasks WHERE id = ?', id);
+    // Verify task exists and get title for logging
+    const task = await db.get('SELECT id, title FROM tasks WHERE id = ?', id);
     if (!task) {
       return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 });
     }
@@ -57,6 +58,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     
     // Return the created log entry
     const log = await db.get('SELECT * FROM task_logs WHERE id = ?', result.lastID);
+    
+    // Log the activity
+    await logActivity(`Added log to task "${task.title}": "${content.trim().substring(0, 50)}${content.trim().length > 50 ? '...' : ''}"`);
     
     return new Response(JSON.stringify(log), {
       headers: { 'Content-Type': 'application/json' },

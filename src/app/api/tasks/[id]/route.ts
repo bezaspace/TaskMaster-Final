@@ -1,5 +1,6 @@
 
 import { getDb, getCurrentDbTimestamp } from '../../../../../lib/db';
+import { logActivity } from '../../../../../lib/activityLogger';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -78,6 +79,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     currentTimestamp,
     id
   );
+
+  // Log the activity
+  const statusChanged = existing.status !== status;
+  if (statusChanged) {
+    const statusText = status === 'done' ? 'completed' : 'marked as pending';
+    await logActivity(`${statusText.charAt(0).toUpperCase() + statusText.slice(1)} task: "${title}"`);
+  } else {
+    await logActivity(`Updated task: "${title}"`);
+  }
+
   return new Response(JSON.stringify({ success: true }), { status: 200 });
 }
 
@@ -127,6 +138,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     // Now delete the original task (logs will be cascade deleted)
     await db.run('DELETE FROM tasks WHERE id = ?', id);
+    
+    // Log the activity
+    await logActivity(`Deleted task: "${task.title}"`);
     
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (error) {

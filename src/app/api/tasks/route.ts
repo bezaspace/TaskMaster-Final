@@ -1,5 +1,6 @@
 
 import { getDb, getCurrentDbTimestamp } from '../../../../lib/db';
+import { logActivity } from '../../../../lib/activityLogger';
 
 
 
@@ -62,6 +63,10 @@ export async function POST(request: Request) {
       currentTimestamp
     );
     const task = await db.get('SELECT * FROM tasks WHERE id = ?', result.lastID);
+    
+    // Log the activity
+    await logActivity(`Created task: "${title}"`);
+    
     return new Response(JSON.stringify(task), {
       headers: { 'Content-Type': 'application/json' },
       status: 201,

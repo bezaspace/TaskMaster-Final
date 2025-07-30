@@ -1,4 +1,5 @@
 import { getDb, getCurrentDbTimestamp } from '../../../../../lib/db';
+import { logActivity } from '../../../../../lib/activityLogger';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -45,6 +46,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
     
     const note = await db.get('SELECT * FROM notes WHERE id = ?', id);
+    
+    // Log the activity
+    await logActivity(`Updated note: "${title}"`);
+    
     return new Response(JSON.stringify(note), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
@@ -59,11 +64,21 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     const { id } = await params;
     const db = await getDb();
+    
+    // Get note title before deletion for logging
+    const note = await db.get('SELECT title FROM notes WHERE id = ?', id);
+    if (!note) {
+      return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
+    }
+    
     const result = await db.run('DELETE FROM notes WHERE id = ?', id);
     
     if (result.changes === 0) {
       return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 });
     }
+    
+    // Log the activity
+    await logActivity(`Deleted note: "${note.title}"`);
     
     return new Response(JSON.stringify({ message: 'Note deleted successfully' }), {
       headers: { 'Content-Type': 'application/json' },

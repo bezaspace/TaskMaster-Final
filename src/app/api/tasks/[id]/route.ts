@@ -66,6 +66,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const task_date = pickField(data.task_date, existing.task_date);
   const start_time = pickField(data.start_time, existing.start_time);
   const end_time = pickField(data.end_time, existing.end_time);
+  const is_momento_task = pickField(data.is_momento_task, existing.is_momento_task);
+  const momento_start_timestamp = pickField(data.momento_start_timestamp, existing.momento_start_timestamp);
+  const momento_end_timestamp = pickField(data.momento_end_timestamp, existing.momento_end_timestamp);
 
   // Basic validation: end time must be after start time if both are provided
   if (start_time && end_time && end_time <= start_time) {
@@ -98,6 +101,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       task_date: task_date || null,
       start_time: start_time || null,
       end_time: end_time || null,
+      is_momento_task: is_momento_task || false,
+      momento_start_timestamp: momento_start_timestamp || null,
+      momento_end_timestamp: momento_end_timestamp || null,
       updated_at: currentTimestamp
     })
     .eq('id', id);
@@ -108,11 +114,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   // Log the activity
   const statusChanged = existing.status !== status;
-  if (statusChanged) {
+  const isMomentoTask = is_momento_task || existing.is_momento_task;
+  
+  if (statusChanged && isMomentoTask) {
+    if (status === 'completed' && momento_end_timestamp) {
+      await logActivity(`Completed momento task: "${title}"`);
+    } else {
+      await logActivity(`Updated momento task: "${title}"`);
+    }
+  } else if (statusChanged) {
     const statusText = status === 'done' ? 'completed' : 'marked as pending';
     await logActivity(`${statusText.charAt(0).toUpperCase() + statusText.slice(1)} task: "${title}"`);
   } else {
-    await logActivity(`Updated task: "${title}"`);
+    const taskType = isMomentoTask ? 'momento task' : 'task';
+    await logActivity(`Updated ${taskType}: "${title}"`);
   }
 
   return new Response(JSON.stringify({ success: true }), { status: 200 });
@@ -156,6 +171,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         task_date: task.task_date,
         start_time: task.start_time,
         end_time: task.end_time,
+        is_momento_task: task.is_momento_task,
+        momento_start_timestamp: task.momento_start_timestamp,
+        momento_end_timestamp: task.momento_end_timestamp,
         created_at: task.created_at,
         updated_at: task.updated_at,
         deleted_at: currentTimestamp
@@ -196,7 +214,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
     
     // Log the activity
-    await logActivity(`Deleted task: "${task.title}"`);
+    const taskType = task.is_momento_task ? 'momento task' : 'task';
+    await logActivity(`Deleted ${taskType}: "${task.title}"`);
     
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (error) {

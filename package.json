@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "migrate-momento": "node migrate-add-momento-fields.js"
   },
   "dependencies": {
     "@google/genai": "^1.11.0",

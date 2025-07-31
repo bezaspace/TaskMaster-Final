@@ -10,6 +10,7 @@ A comprehensive task management application built with Next.js and SQLite.
 - 📊 Activity tracking
 - 🤖 AI-powered chat assistance
 - 📋 Standalone notes system
+- ⏱️ **Momento tasks** - AI-initiated time tracking for spontaneous work sessions
 
 ## Quick Start
 
@@ -26,6 +27,11 @@ npm run setup-db
 ```
 
 This creates the complete SQLite database with all tables and indexes.
+
+**For existing installations:** Run the momento tasks migration:
+```bash
+npm run migrate-momento
+```
 
 ### 3. Environment Setup
 Create a `.env.local` file:
@@ -65,7 +71,33 @@ If you need to recreate the database from scratch:
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run setup-db` - Create/recreate database schema
+- `npm run migrate-momento` - Add momento tasks support to existing database
 - `npm run lint` - Run ESLint
+
+## Momento Tasks
+
+Momento tasks are a special type of task that captures spontaneous work sessions through AI chat:
+
+### Usage
+- **Start a momento task**: Tell the AI "I started working on the API integration"
+- **Finish a momento task**: Tell the AI "I'm done with the API integration"
+
+### Features
+- ⏱️ Automatic time tracking with precise timestamps
+- 🔥 Real-time duration display for active tasks
+- 📊 Duration calculation when completed
+- 🤖 Natural language interaction through AI chat
+- 📝 Automatic logging of start/end times
+
+### AI Commands
+- "I started working on..." → Creates and starts momento task
+- "I began..." → Creates and starts momento task  
+- "I'm starting..." → Creates and starts momento task
+- "I'm done with..." → Finishes active momento task
+- "I finished..." → Finishes active momento task
+- "I completed..." → Finishes active momento task
+
+Active momento tasks appear prominently at the top of your task list with a live duration counter.
 
 ## Tech Stack
 

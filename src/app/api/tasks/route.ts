@@ -5,7 +5,7 @@ import { logActivity } from '../../../../lib/activityLogger';
 export async function GET() {
   try {
     const supabase = getDb();
-    
+
     // Fetch tasks ordered by execution time (scheduled tasks first, then unscheduled)
     const { data: tasks, error: tasksError } = await supabase
       .from('tasks')
@@ -53,7 +53,17 @@ export async function POST(request: Request) {
   try {
     const supabase = getDb();
     const data = await request.json();
-    const { title, description, status, task_date, start_time, end_time } = data;
+    const {
+      title,
+      description,
+      status,
+      task_date,
+      start_time,
+      end_time,
+      is_momento_task,
+      momento_start_timestamp,
+      momento_end_timestamp
+    } = data;
 
     // Basic validation: end time must be after start time if both are provided
     if (start_time && end_time && end_time <= start_time) {
@@ -70,6 +80,9 @@ export async function POST(request: Request) {
         task_date: task_date || null,
         start_time: start_time || null,
         end_time: end_time || null,
+        is_momento_task: is_momento_task || false,
+        momento_start_timestamp: momento_start_timestamp || null,
+        momento_end_timestamp: momento_end_timestamp || null,
         created_at: currentTimestamp,
         updated_at: currentTimestamp
       })
@@ -79,10 +92,13 @@ export async function POST(request: Request) {
     if (error) {
       handleSupabaseError(error, 'task creation');
     }
-    
+
     // Log the activity
-    await logActivity(`Created task: "${title}"`);
-    
+    const activityMessage = is_momento_task
+      ? `Started momento task: "${title}"`
+      : `Created task: "${title}"`;
+    await logActivity(activityMessage);
+
     return new Response(JSON.stringify(task), {
       headers: { 'Content-Type': 'application/json' },
       status: 201,

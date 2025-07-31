@@ -13,6 +13,9 @@ export interface Task {
   task_date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
+  is_momento_task?: boolean;
+  momento_start_timestamp?: string | null;
+  momento_end_timestamp?: string | null;
   created_at: string;
   updated_at: string;
   done?: boolean;
@@ -44,8 +47,20 @@ export interface DeletedTask {
   task_date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
+  is_momento_task?: boolean;
+  momento_start_timestamp?: string | null;
+  momento_end_timestamp?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string;
   logs?: DeletedTaskLog[];
+}
+
+export interface MomentoTaskRequest {
+  title: string;
+  description?: string;
+}
+
+export interface FinishMomentoTaskRequest {
+  task_identifier: string | number;
 }

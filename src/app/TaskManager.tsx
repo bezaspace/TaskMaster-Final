@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Task, TaskLog } from "./types/task";
 import TaskLogs from "./components/TaskLogs";
 import TaskCreationModal from "./components/TaskCreationModal";
+import MomentoTaskIndicator from "./components/MomentoTaskIndicator";
 import { formatTaskDateTime } from "../../lib/timeUtils";
 
 const SCHOOL_BUS_YELLOW = "#FFD800";
@@ -44,7 +45,8 @@ export default function TaskManager() {
           task_date: task.task_date ?? "",
           start_time: task.start_time ?? "",
           end_time: task.end_time ?? "",
-          done: Boolean(task.status === "done" || task.done)
+          done: Boolean(task.status === "done" || task.done),
+          is_momento_task: Boolean(task.is_momento_task)
         }));
         setTasks(normalizedTasks);
       })
@@ -177,6 +179,82 @@ export default function TaskManager() {
     ));
   };
 
+  // Finish momento task handler
+  const finishMomentoTask = async (taskId: number) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || !task.is_momento_task) return;
+
+    setLoading(true);
+    try {
+      const currentTimestamp = new Date().toISOString();
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: task.title,
+          description: task.description,
+          status: "completed",
+          is_momento_task: true,
+          momento_start_timestamp: task.momento_start_timestamp,
+          momento_end_timestamp: currentTimestamp,
+          task_date: task.task_date,
+          start_time: task.start_time,
+          end_time: task.end_time
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to finish momento task:', error);
+        alert('Failed to finish momento task: ' + (error.error || 'Unknown error'));
+        return;
+      }
+
+      // Update the task in state
+      setTasks(tasks.map(t =>
+        t.id === taskId ? {
+          ...t,
+          status: "completed",
+          momento_end_timestamp: currentTimestamp,
+          done: true
+        } : t
+      ));
+
+      // Add completion log
+      const logResponse = await fetch(`/api/tasks/${taskId}/logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: `Completed momento task at ${new Date(currentTimestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`
+        })
+      });
+
+      if (logResponse.ok) {
+        const newLog = await logResponse.json();
+        updateTaskLogs(taskId, [...(task.logs || []), newLog]);
+      }
+
+    } catch (error) {
+      console.error('Error finishing momento task:', error);
+      alert('Failed to finish momento task');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Separate momento tasks from regular tasks
+  const momentoTasks = tasks.filter(task => 
+    task.is_momento_task && 
+    task.status === 'in_progress' && 
+    !task.momento_end_timestamp
+  );
+  
+  const regularTasks = tasks.filter(task => 
+    !task.is_momento_task || 
+    task.status !== 'in_progress' || 
+    task.momento_end_timestamp
+  );
+
 
 
   return (
@@ -234,9 +312,30 @@ export default function TaskManager() {
         onTaskCreate={addTask}
         loading={loading}
       />
-      {/* Tasks List */}
+      {/* Active Momento Tasks */}
+      {momentoTasks.length > 0 && (
+        <div style={{ marginBottom: "2rem" }}>
+          <h2 style={{ 
+            color: SCHOOL_BUS_YELLOW, 
+            fontSize: "1.2rem", 
+            marginBottom: "1rem",
+            fontWeight: 600
+          }}>
+            🔥 Active Momento Tasks
+          </h2>
+          {momentoTasks.map(task => (
+            <MomentoTaskIndicator
+              key={task.id}
+              task={task}
+              onFinish={finishMomentoTask}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Regular Tasks List */}
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {tasks.length === 0 ? (
+        {regularTasks.length === 0 && momentoTasks.length === 0 ? (
           <div style={{
             textAlign: "center",
             padding: "4rem 2rem",
@@ -251,17 +350,31 @@ export default function TaskManager() {
               Click the "New Task" button to create your first task
             </p>
           </div>
+        ) : regularTasks.length === 0 ? (
+          <div style={{
+            textAlign: "center",
+            padding: "2rem",
+            color: "#666",
+            background: "#181818",
+            borderRadius: "12px",
+            border: "2px dashed #333"
+          }}>
+            <p style={{ margin: 0, fontSize: "0.9rem" }}>
+              All tasks are momento tasks! Regular tasks will appear here.
+            </p>
+          </div>
         ) : (
-          tasks.map(task => (
+          regularTasks.map(task => (
           <div
             key={task.id}
             style={{
               display: "flex",
               flexDirection: "column",
-              background: "#181818",
+              background: task.is_momento_task ? "#1a1a1a" : "#181818",
               borderRadius: "8px",
               padding: "1rem 1.5rem",
-              boxShadow: task.done ? `0 0 0 2px ${SCHOOL_BUS_YELLOW}` : "none"
+              boxShadow: task.done ? `0 0 0 2px ${SCHOOL_BUS_YELLOW}` : "none",
+              border: task.is_momento_task ? `1px solid ${SCHOOL_BUS_YELLOW}40` : "none"
             }}
           >
             <div style={{ display: "flex", alignItems: "center" }}>
@@ -281,8 +394,27 @@ export default function TaskManager() {
                 textDecoration: task.done ? "line-through" : "none",
                 color: task.done ? SCHOOL_BUS_YELLOW : "#fff",
                 fontWeight: 500,
-                fontSize: "1.1rem"
-              }}>{task.title}</span>
+                fontSize: "1.1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem"
+              }}>
+                {task.title}
+                {task.is_momento_task && (
+                  <span style={{
+                    background: SCHOOL_BUS_YELLOW,
+                    color: JET_BLACK,
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    padding: "0.2rem 0.5rem",
+                    borderRadius: "4px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px"
+                  }}>
+                    MOMENTO
+                  </span>
+                )}
+              </span>
               <span style={{
                 color: task.done ? SCHOOL_BUS_YELLOW : "#888",
                 fontWeight: 700,
@@ -312,7 +444,20 @@ export default function TaskManager() {
                 {task.description}
               </div>
             )}
-            {(task.task_date || task.start_time || task.end_time) && (
+            {/* Show scheduling info for regular tasks or momento duration for completed momento tasks */}
+            {task.is_momento_task && task.momento_start_timestamp && task.momento_end_timestamp ? (
+              <div style={{ color: SCHOOL_BUS_YELLOW, marginTop: "0.25rem", marginLeft: "2.75rem", fontWeight: 600 }}>
+                Momento Duration: {(() => {
+                  const start = new Date(task.momento_start_timestamp);
+                  const end = new Date(task.momento_end_timestamp);
+                  const durationMs = end.getTime() - start.getTime();
+                  const durationMinutes = Math.round(durationMs / (1000 * 60));
+                  const hours = Math.floor(durationMinutes / 60);
+                  const minutes = durationMinutes % 60;
+                  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+                })()}
+              </div>
+            ) : (task.task_date || task.start_time || task.end_time) && (
               <div style={{ color: SCHOOL_BUS_YELLOW, marginTop: "0.25rem", marginLeft: "2.75rem", fontWeight: 600 }}>
                 {formatTaskDateTime(task.task_date, task.start_time, task.end_time)}
               </div>

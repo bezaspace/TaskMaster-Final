@@ -100,13 +100,22 @@ TASK FUNCTIONS:
 4. fetch_tasks - Retrieves all tasks to display or analyze, including their logs
 5. add_task_log - Adds a log entry to an existing task for progress updates, notes, or status changes
 
+MOMENTO TASK FUNCTIONS:
+6. start_momento_task - Starts a momento task when user says they began working on something (captures current timestamp)
+7. finish_momento_task - Finishes an active momento task when user says they're done (captures end timestamp and calculates duration)
+8. get_active_momento_tasks - Shows all currently active momento tasks with their current duration
+
 NOTE FUNCTIONS:
-6. create_note - Creates new notes with title and content
-7. edit_note - Modifies existing notes by ID, can update title and/or content
-8. delete_note - Removes notes by ID
-9. fetch_notes - Retrieves all notes to display or analyze
+9. create_note - Creates new notes with title and content
+10. edit_note - Modifies existing notes by ID, can update title and/or content
+11. delete_note - Removes notes by ID
+12. fetch_notes - Retrieves all notes to display or analyze
 
 GUIDELINES:
+- **MOMENTO TASK PRIORITY**: Always check for momento task start/finish phrases FIRST before other actions
+- **AUTO-LOGGING**: If there's an active momento task, automatically log user requests to it using add_task_log (without specifying task_id)
+- **COMPLETION DETECTION**: Phrases like "I'm finished...", "I'm done...", "I completed..." should trigger finish_momento_task
+- **START DETECTION**: Phrases like "I started...", "I'm working on..." should trigger start_momento_task
 - Always be helpful, friendly, and proactive in task and notes management
 - When users mention creating, adding, or making tasks, use create_task
 - When users mention creating, writing, or making notes, use create_note
@@ -124,9 +133,30 @@ GUIDELINES:
 - When showing notes, present them in a clear, organized format with title and content
 - Help users prioritize and organize their tasks and notes effectively
 - When users want to add notes, updates, or progress information to existing tasks, use add_task_log
+- **SMART LOGGING**: If user wants to log something and there's an active momento task, use add_task_log without task_id to auto-log to the active momento task
 - When displaying tasks, include relevant log information to provide context
 - Encourage users to log their progress and updates on tasks
 - Distinguish between task logs (progress updates) and standalone notes (independent information)
+
+MOMENTO TASK GUIDELINES - CRITICAL:
+- **STARTING MOMENTO TASKS**: When users say ANY of these phrases, use start_momento_task:
+  * "I started working on...", "I began...", "I'm starting...", "I'm working on..."
+  * "Started on...", "Beginning...", "Working on..."
+- **FINISHING MOMENTO TASKS**: When users say ANY of these phrases, use finish_momento_task:
+  * "I'm done with...", "I finished...", "I completed...", "I'm finished..."
+  * "Done with...", "Finished...", "Completed...", "All done with..."
+  * "I'm finished writing...", "I finished working on...", "Done working on..."
+- **AUTO-LOGGING TO ACTIVE MOMENTO TASKS**: When users want to log something and there's an active momento task:
+  * If user says "log this", "note that", "add this to my task", etc. - automatically log to the active momento task
+  * Don't ask which task to log to if there's an active momento task running
+  * Always mention which momento task the log was added to
+- **ALWAYS CHECK FOR ACTIVE MOMENTO TASKS**: Before responding to completion phrases, use get_active_momento_tasks to see what's currently running
+- **FUZZY MATCHING**: When finishing, match task titles loosely (e.g., "finished writing notes" should match "writing my notes")
+- Momento tasks automatically track time from start to finish with precise timestamps
+- Momento tasks are always set to "in_progress" status when started and "completed" when finished
+- Momento tasks are different from regular scheduled tasks - they capture spontaneous work sessions
+- Always confirm momento task creation and completion with clear feedback including duration
+- If multiple active momento tasks exist when finishing, help user identify the correct one
 
 TASK STATUS MANAGEMENT:
 - Use "pending" for new tasks that haven't been started
@@ -273,14 +303,14 @@ export async function POST(req: NextRequest) {
 
     const addTaskLogFunctionDeclaration = {
       name: 'add_task_log',
-      description: 'Adds a log entry to an existing task. Use this when users want to add notes, updates, or progress information to a task.',
+      description: 'Adds a log entry to a task. If task_id is not provided and there is an active momento task, it will automatically log to that task.',
       parameters: {
         type: Type.OBJECT,
         properties: {
-          task_id: { type: Type.NUMBER, description: 'The unique identifier of the task to add a log entry to.' },
+          task_id: { type: Type.NUMBER, description: 'The unique identifier of the task to add a log entry to. Optional - if not provided, will use active momento task.' },
           content: { type: Type.STRING, description: 'The content of the log entry.' },
         },
-        required: ['task_id', 'content'],
+        required: ['content'],
       },
     };
 
@@ -333,6 +363,44 @@ export async function POST(req: NextRequest) {
       },
     };
 
+    const startMomentoTaskFunctionDeclaration = {
+      name: 'start_momento_task',
+      description: 'Starts a momento task - creates a task with current timestamp as start time. Use when user says they started working on something.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: 'The title of the momento task (required).' },
+          description: { type: Type.STRING, description: 'Optional description of what the user is working on.' },
+        },
+        required: ['title'],
+      },
+    };
+
+    const finishMomentoTaskFunctionDeclaration = {
+      name: 'finish_momento_task',
+      description: 'Finishes an active momento task by setting end timestamp. Use when user says they finished or are done with something.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          task_identifier: { 
+            type: Type.STRING, 
+            description: 'The task title (fuzzy match) or task ID to finish. Can be partial title match.' 
+          },
+        },
+        required: ['task_identifier'],
+      },
+    };
+
+    const getActiveMomentoTasksFunctionDeclaration = {
+      name: 'get_active_momento_tasks',
+      description: 'Gets all currently active momento tasks with their current duration.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
+        required: [],
+      },
+    };
+
     // --- Function calling loop ---
     let contents = typedHistory;
     let finalText = '';
@@ -349,7 +417,10 @@ export async function POST(req: NextRequest) {
           createNoteFunctionDeclaration,
           editNoteFunctionDeclaration,
           deleteNoteFunctionDeclaration,
-          fetchNotesFunctionDeclaration
+          fetchNotesFunctionDeclaration,
+          startMomentoTaskFunctionDeclaration,
+          finishMomentoTaskFunctionDeclaration,
+          getActiveMomentoTasksFunctionDeclaration
         ]
       }],
     };
@@ -362,6 +433,9 @@ export async function POST(req: NextRequest) {
     const { createNoteFromAI } = await import('../../aichat/createNoteFromAI');
     const { editNoteFromAI, deleteNoteFromAI } = await import('../../aichat/editDeleteNoteFromAI');
     const { fetchNotesFromAI } = await import('../../aichat/fetchNotesFromAI');
+
+    // Import momento task handlers
+    const { startMomentoTaskFromAI, finishMomentoTaskFromAI, getActiveMomentoTasksFromAI } = await import('../../aichat/momentoTaskFromAI');
     while (true) {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -433,8 +507,9 @@ export async function POST(req: NextRequest) {
           functionCallHandled = true;
           continue;
         } else if (functionCall.name === 'add_task_log' && functionCall.args) {
-          const args = functionCall.args as { task_id: number; content: string };
-          const logResult = await addTaskLogFromAI(args);
+          const args = functionCall.args as { task_id?: number; content: string };
+          const { smartAddTaskLog } = await import('../../aichat/autoLogToMomentoTask');
+          const logResult = await smartAddTaskLog(args);
           const functionResponsePart = {
             name: functionCall.name,
             response: { result: logResult },
@@ -481,6 +556,40 @@ export async function POST(req: NextRequest) {
           const functionResponsePart = {
             name: functionCall.name,
             response: { result: notes },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'start_momento_task' && functionCall.args) {
+          const args = functionCall.args as { title: string; description?: string };
+          console.log('Starting momento task with args:', args);
+          const momentoTask = await startMomentoTaskFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: momentoTask },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'finish_momento_task' && functionCall.args) {
+          const args = functionCall.args as { task_identifier: string };
+          console.log('Finishing momento task with args:', args);
+          const finishedTask = await finishMomentoTaskFromAI(args);
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: finishedTask },
+          };
+          contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
+          contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });
+          functionCallHandled = true;
+          continue;
+        } else if (functionCall.name === 'get_active_momento_tasks') {
+          const activeTasks = await getActiveMomentoTasksFromAI();
+          const functionResponsePart = {
+            name: functionCall.name,
+            response: { result: activeTasks },
           };
           contents.push({ role: 'model', parts: [{ functionCall: functionCall }] });
           contents.push({ role: 'user', parts: [{ functionResponse: functionResponsePart }] });

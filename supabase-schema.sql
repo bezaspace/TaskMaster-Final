@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     end_time TIME,
     time_slot TIMESTAMPTZ,
     time_slot_end TIMESTAMPTZ,
+    is_momento_task BOOLEAN DEFAULT FALSE,
+    momento_start_timestamp TIMESTAMPTZ,
+    momento_end_timestamp TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -71,6 +74,8 @@ CREATE TABLE IF NOT EXISTS deleted_task_logs (
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_tasks_task_date ON tasks(task_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_momento ON tasks(is_momento_task, status) WHERE is_momento_task = TRUE;
+CREATE INDEX IF NOT EXISTS idx_tasks_active_momento ON tasks(is_momento_task, momento_end_timestamp) WHERE is_momento_task = TRUE AND momento_end_timestamp IS NULL;
 CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
 CREATE INDEX IF NOT EXISTS idx_activity_log_timestamp ON activity_log(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_deleted_tasks_deleted_at ON deleted_tasks(deleted_at DESC);

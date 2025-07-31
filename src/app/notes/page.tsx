@@ -2,13 +2,17 @@
 import React, { useState, useEffect } from "react";
 import { Note } from "../types/note";
 import { formatLogTimestamp } from "../../../lib/timeUtils";
+import dynamic from "next/dynamic";
 
 const SCHOOL_BUS_YELLOW = "#FFD800";
 const JET_BLACK = "#121212";
 
+const VoiceNoteModal = dynamic(() => import("../components/VoiceNoteModal"), { ssr: false });
+
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [newTitle, setNewTitle] = useState<string>("");
   const [newContent, setNewContent] = useState<string>("");
@@ -137,6 +141,23 @@ export default function NotesPage() {
         >
           + New Note
         </button>
+
+        <button
+          onClick={() => setShowVoiceModal(true)}
+          style={{
+            padding: "0.6rem 1rem",
+            borderRadius: "8px",
+            border: "1px solid #444",
+            background: "#222",
+            color: "#f5c518",
+            cursor: "pointer",
+            fontWeight: 600
+          }}
+          title="Create note from voice"
+          aria-label="Create note from voice"
+        >
+          🎤 Voice Note
+        </button>
       </div>
 
       {/* Create Note Form */}
@@ -220,6 +241,16 @@ export default function NotesPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {showVoiceModal && (
+        <VoiceNoteModal
+          onClose={() => setShowVoiceModal(false)}
+          onSuccess={(newNote: Note) => {
+            setNotes([newNote, ...notes]);
+            setShowVoiceModal(false);
+          }}
+        />
       )}
 
       {/* Notes List */}
